@@ -12,7 +12,11 @@ import {
   setDoc,
 } from "firebase/firestore";
 import AuthPanel from "./components/AuthPanel";
-import { LOCATION_TICK_EVENT } from "./components/LiveLocationTicker";
+import {
+  LOCATION_ENABLED_STORAGE_KEY,
+  LOCATION_TICK_EVENT,
+  LOCATION_TOGGLE_EVENT,
+} from "./components/LiveLocationTicker";
 import { auth, db } from "./lib/firebaseClient";
 import { geocodeAddressToCoords } from "./lib/geocodeClient";
 import {
@@ -252,6 +256,7 @@ function HomeContent() {
   const [routeStopsByKey, setRouteStopsByKey] = useState({});
   const [dailyStopStatuses, setDailyStopStatuses] = useState({});
   const [liveExcludedStopKeys, setLiveExcludedStopKeys] = useState([]);
+  const [locationEnabled, setLocationEnabled] = useState(true);
   const userDocUnsubRef = useRef(null);
   const profileRouteSignature = profile
     ? [
@@ -270,8 +275,31 @@ function HomeContent() {
         .map((value) =>
           value === null || value === undefined ? "" : value.toString().trim()
         )
-        .join("|")
+      .join("|")
     : "";
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const raw = window.localStorage.getItem(LOCATION_ENABLED_STORAGE_KEY);
+    setLocationEnabled(raw === null ? true : raw === "1");
+
+    const handleStorage = (event) => {
+      if (event?.key !== LOCATION_ENABLED_STORAGE_KEY) return;
+      const nextRaw = window.localStorage.getItem(LOCATION_ENABLED_STORAGE_KEY);
+      setLocationEnabled(nextRaw === null ? true : nextRaw === "1");
+    };
+    const handleToggle = () => {
+      const nextRaw = window.localStorage.getItem(LOCATION_ENABLED_STORAGE_KEY);
+      setLocationEnabled(nextRaw === null ? true : nextRaw === "1");
+    };
+
+    window.addEventListener("storage", handleStorage);
+    window.addEventListener(LOCATION_TOGGLE_EVENT, handleToggle);
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+      window.removeEventListener(LOCATION_TOGGLE_EVENT, handleToggle);
+    };
+  }, []);
 
   useEffect(() => {
     profileRef.current = profile;
@@ -1927,15 +1955,15 @@ function HomeContent() {
 
   useEffect(() => {
     if (!profile || !mapReady) return;
-    if (isMonitorProfile(profile)) {
+    if (isMonitorProfile(profile) && locationEnabled) {
       requestLocation();
       return;
     }
     stopLocationWatch();
-  }, [profile, mapReady]);
+  }, [profile, mapReady, locationEnabled]);
 
   useEffect(() => {
-    if (!profile || !mapReady || !isMonitorProfile(profile)) return;
+    if (!profile || !mapReady || !isMonitorProfile(profile) || !locationEnabled) return;
     if (typeof window === "undefined" || !window.google) return;
     const map = mapInstanceRef.current;
     if (!map) return;
@@ -1973,7 +2001,7 @@ function HomeContent() {
     return () => {
       window.removeEventListener(LOCATION_TICK_EVENT, handleLocationTick);
     };
-  }, [profile, mapReady]);
+  }, [profile, mapReady, locationEnabled]);
 
   useEffect(() => {
     if (!profile || !mapReady || !window.google) return;
@@ -2149,7 +2177,7 @@ function HomeContent() {
       return;
     }
 
-    if (profile && isMonitorProfile(profile)) {
+    if (profile && isMonitorProfile(profile) && locationEnabled) {
       // For monitor, center on fresh device location if cache is missing.
       requestLocation({ force: true });
     }
@@ -2165,6 +2193,19 @@ function HomeContent() {
         setPulse(true);
         window.setTimeout(() => setPulse(false), 600);
       }
+    }
+  };
+
+  const handleToggleLocation = () => {
+    if (typeof window === "undefined") return;
+    const next = !locationEnabled;
+    setLocationEnabled(next);
+    window.localStorage.setItem(LOCATION_ENABLED_STORAGE_KEY, next ? "1" : "0");
+    window.dispatchEvent(new CustomEvent(LOCATION_TOGGLE_EVENT));
+    if (!next) {
+      stopLocationWatch();
+    } else if (profile && isMonitorProfile(profile)) {
+      requestLocation({ force: true });
     }
   };
 
@@ -2196,6 +2237,33 @@ function HomeContent() {
             </div>
           </div>
         </div>
+      ) : null}
+      {profile && isMonitorProfile(profile) ? (
+        <button
+          type="button"
+          className={locationEnabled ? "map-location-toggle active" : "map-location-toggle"}
+          onClick={handleToggleLocation}
+          aria-label={
+            locationEnabled ? "Desactivar localización en vivo" : "Activar localización en vivo"
+          }
+          title={locationEnabled ? "Localización activa" : "Localización desactivada"}
+        >
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true"
+          >
+            <path
+              d="M12 2.75a6.75 6.75 0 0 0-6.75 6.75c0 4.95 5.59 10.72 6.23 11.37a.75.75 0 0 0 1.04 0c.64-.65 6.23-6.42 6.23-11.37A6.75 6.75 0 0 0 12 2.75Z"
+              stroke="currentColor"
+              strokeWidth="1.8"
+            />
+            <circle cx="12" cy="9.5" r="2.35" fill="currentColor" />
+          </svg>
+        </button>
       ) : null}
       <button
         type="button"

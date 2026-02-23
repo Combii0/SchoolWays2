@@ -7,6 +7,8 @@ import { auth, db } from "../lib/firebaseClient";
 
 const SEND_INTERVAL_MS = 5000;
 export const LOCATION_TICK_EVENT = "schoolways:location-tick";
+export const LOCATION_TOGGLE_EVENT = "schoolways:location-toggle";
+export const LOCATION_ENABLED_STORAGE_KEY = "schoolways:location-enabled";
 const GEOLOCATION_OPTIONS = {
   enableHighAccuracy: true,
   maximumAge: 2000,
@@ -25,6 +27,13 @@ const normalizeRouteId = (value) =>
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
+
+const readLocationEnabled = () => {
+  if (typeof window === "undefined") return true;
+  const raw = window.localStorage.getItem(LOCATION_ENABLED_STORAGE_KEY);
+  if (raw === null) return true;
+  return raw === "1";
+};
 
 const isMonitorProfile = (profile) => {
   if (!profile || typeof profile !== "object") return false;
@@ -54,6 +63,7 @@ const isMonitorProfile = (profile) => {
 
 export default function LiveLocationTicker() {
   const [session, setSession] = useState({ uid: "", profile: null });
+  const [locationEnabled, setLocationEnabled] = useState(true);
   const inFlightRef = useRef(false);
 
   useEffect(() => {
@@ -93,6 +103,27 @@ export default function LiveLocationTicker() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    setLocationEnabled(readLocationEnabled());
+
+    const handleStorage = (event) => {
+      if (event?.key !== LOCATION_ENABLED_STORAGE_KEY) return;
+      setLocationEnabled(readLocationEnabled());
+    };
+    const handleToggle = () => {
+      setLocationEnabled(readLocationEnabled());
+    };
+
+    window.addEventListener("storage", handleStorage);
+    window.addEventListener(LOCATION_TOGGLE_EVENT, handleToggle);
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+      window.removeEventListener(LOCATION_TOGGLE_EVENT, handleToggle);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!locationEnabled) return;
     if (!session.uid || !isMonitorProfile(session.profile)) return;
     if (typeof window === "undefined" || !("geolocation" in navigator)) return;
 
@@ -188,7 +219,7 @@ export default function LiveLocationTicker() {
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [session.uid, session.profile]);
+  }, [locationEnabled, session.uid, session.profile]);
 
   return null;
 }
