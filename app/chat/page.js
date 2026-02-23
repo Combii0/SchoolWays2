@@ -62,6 +62,30 @@ const extractTimeFromMessage = (message, field) => {
   return match?.[1] || "";
 };
 
+const extractLeadingIsoFromMessage = (message) => {
+  if (!message || typeof message !== "string") return "";
+  const match = message.match(/^\[([0-9]{4}-[0-9]{2}-[0-9]{2}T[^\]]+)\]/);
+  return match?.[1] || "";
+};
+
+const formatLogTime = (value) => {
+  if (!value) return "-";
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return value;
+  const formatted = new Intl.DateTimeFormat("es-CO", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    fractionalSecondDigits: 3,
+    hour12: false,
+  }).format(new Date(parsed));
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Local";
+  return `${formatted} (${timeZone})`;
+};
+
 export default function LogsPage() {
   const [authReady, setAuthReady] = useState(false);
   const [isMonitor, setIsMonitor] = useState(false);
@@ -191,14 +215,20 @@ export default function LogsPage() {
         ) : (
           <div className="logs-list">
             {orderedLogs.map((entry) => {
-              const sentAt = extractTimeFromMessage(entry.message, "sentAt") || entry.timestamp || "-";
+              const sentAtRaw =
+                extractTimeFromMessage(entry.message, "sentAt") ||
+                extractLeadingIsoFromMessage(entry.message) ||
+                entry.timestamp ||
+                "";
               const reportedAt = extractTimeFromMessage(entry.message, "reportedAt");
+              const sentAt = formatLogTime(sentAtRaw);
+              const reportedAtText = reportedAt ? formatLogTime(reportedAt) : "No disponible";
               return (
                 <article className={levelClass(entry.level)} key={entry.id}>
                   <div className="logs-meta">
                     <span>[{entry.level || "log"}]</span>
                     <span>Enviado: {sentAt}</span>
-                    {reportedAt ? <span>GPS reportado: {reportedAt}</span> : null}
+                    <span>GPS reportado: {reportedAtText}</span>
                     <span>{entry.path || "/"}</span>
                   </div>
                   <pre>{entry.message || ""}</pre>

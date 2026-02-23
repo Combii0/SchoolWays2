@@ -34,6 +34,7 @@ import {
 } from "../lib/routeDailyStatus";
 
 const ROUTE_STOPS_SUBCOLLECTIONS = ["direcciones", "addresses", "stops"];
+const LOCATION_UPLOAD_INTERVAL_MS = 5000;
 const GEOLOCATION_OPTIONS = {
   enableHighAccuracy: true,
   maximumAge: 2000,
@@ -1005,24 +1006,41 @@ export default function RecorridoPage() {
     if (!("geolocation" in navigator)) return;
 
     let cancelled = false;
-    const onPosition = (position) => {
-      logLiveCoords("monitor-watchPosition", position);
+    const onPosition = (position, options = {}) => {
       if (cancelled) return;
       const lat = Number(position?.coords?.latitude);
       const lng = Number(position?.coords?.longitude);
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
       const coords = { lat, lng };
       setBusCoords(coords);
-      void maybeUploadMonitorLocation(coords, profile);
+      if (options.logSource) {
+        logLiveCoords(options.logSource, position);
+      }
+      if (options.upload) {
+        void maybeUploadMonitorLocation(coords, profile);
+      }
     };
 
-    navigator.geolocation.getCurrentPosition(onPosition, () => null, GEOLOCATION_OPTIONS);
+    const sendTick = () => {
+      navigator.geolocation.getCurrentPosition(
+        (position) => onPosition(position, { upload: true, logSource: "monitor-5s-tick" }),
+        () => null,
+        GEOLOCATION_OPTIONS
+      );
+    };
 
-    const watchId = navigator.geolocation.watchPosition(onPosition, () => null, GEOLOCATION_OPTIONS);
+    sendTick();
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => onPosition(position, { upload: false }),
+      () => null,
+      GEOLOCATION_OPTIONS
+    );
+    const intervalId = window.setInterval(sendTick, LOCATION_UPLOAD_INTERVAL_MS);
     locationWatchIdRef.current = watchId;
 
     return () => {
       cancelled = true;
+      window.clearInterval(intervalId);
       if (watchId !== null && "geolocation" in navigator) {
         navigator.geolocation.clearWatch(watchId);
       }
