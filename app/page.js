@@ -85,6 +85,30 @@ const parseStoredCoords = () => {
   }
 };
 
+const getProfileDisplayName = (profile) => {
+  if (!profile || typeof profile !== "object") return "";
+  const fallbackName = [profile.firstName, profile.lastName]
+    .map((value) => (value === null || value === undefined ? "" : value.toString().trim()))
+    .filter(Boolean)
+    .join(" ");
+  const candidates = [
+    profile.studentName,
+    profile.fullName,
+    profile.displayName,
+    profile.name,
+    fallbackName,
+  ];
+  return candidates
+    .map((value) => (value === null || value === undefined ? "" : value.toString().trim()))
+    .find(Boolean);
+};
+
+const getProfileRouteLabel = (profile) => {
+  const route = profile?.route === null || profile?.route === undefined ? "" : profile.route;
+  const text = route.toString().trim();
+  return text || "Ruta";
+};
+
 const getRouteIdCandidates = ({ profile, routeKey, routeStopsByKey }) => {
   const candidates = new Set();
   const routeNameFromKey = routeKey ? routeKey.split(":").slice(1).join(":") : "";
@@ -2295,6 +2319,9 @@ function HomeContent() {
     }
   };
 
+  const profileDisplayName = getProfileDisplayName(profile) || "Estudiante";
+  const profileRouteLabel = getProfileRouteLabel(profile);
+
   return (
     <main className="map-page">
       <AuthPanel />
@@ -2311,6 +2338,12 @@ function HomeContent() {
         className={profile ? "map-surface" : "map-surface hidden"}
         aria-label="Mapa"
       />
+      {profile ? (
+        <section className="map-top-island" aria-label="Información del estudiante y ruta">
+          <div className="map-top-island-name">{profileDisplayName}</div>
+          <div className="map-top-island-route">{profileRouteLabel}</div>
+        </section>
+      ) : null}
       {profile ? (
         <div className="eta-bubble" aria-live="polite">
           <div className="eta-bubble-inner">
