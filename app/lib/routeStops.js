@@ -23,6 +23,16 @@ const normalizeIdentifier = (value) => {
 
 const uniq = (values) => [...new Set(values.filter(Boolean))];
 
+const normalizeMatchText = (value) => {
+  const text = toText(value);
+  if (!text) return "";
+  return text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]/g, "");
+};
+
 const parseCoord = (value) => {
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
   if (typeof value === "string") {
@@ -50,6 +60,35 @@ const parseCoordsFromValue = (value) => {
     return { lat, lng };
   }
   return null;
+};
+
+const toRadians = (value) => (value * Math.PI) / 180;
+
+const distanceMetersBetween = (a, b) => {
+  if (!a || !b) return null;
+  const lat1 = Number(a.lat);
+  const lng1 = Number(a.lng);
+  const lat2 = Number(b.lat);
+  const lng2 = Number(b.lng);
+  if (
+    !Number.isFinite(lat1) ||
+    !Number.isFinite(lng1) ||
+    !Number.isFinite(lat2) ||
+    !Number.isFinite(lng2)
+  ) {
+    return null;
+  }
+
+  const earthRadius = 6371000;
+  const dLat = toRadians(lat2 - lat1);
+  const dLng = toRadians(lng2 - lng1);
+  const sinLat = Math.sin(dLat / 2);
+  const sinLng = Math.sin(dLng / 2);
+  const aa =
+    sinLat * sinLat +
+    Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) * sinLng * sinLng;
+  const cc = 2 * Math.atan2(Math.sqrt(aa), Math.sqrt(1 - aa));
+  return earthRadius * cc;
 };
 
 const parseOrderHint = (value) => {
@@ -135,6 +174,100 @@ const parseInlineStops = (value) => {
   return sortAndStripStops(value.map((item, index) => parseStopRecord(item, index)));
 };
 
+const collectAddressCandidates = (routeData, profile) => {
+  const values = [
+    routeData?.startAddress,
+    routeData?.startingAddress,
+    routeData?.startPoint,
+    routeData?.originAddress,
+    routeData?.origin,
+    routeData?.pickupStart,
+    routeData?.inicio,
+    routeData?.inicioRuta,
+    routeData?.puntoInicio,
+    routeData?.schoolAddress,
+    routeData?.institutionAddress,
+    routeData?.colegio,
+    routeData?.school,
+    routeData?.destinationAddress,
+    routeData?.destino,
+    profile?.institutionAddress,
+  ];
+
+  const normalized = values
+    .map((value) => normalizeMatchText(value))
+    .filter(Boolean);
+  return new Set(normalized);
+};
+
+const collectCoordsCandidates = (routeData, profile) => {
+  const coordsValues = [
+    parseCoordsFromValue(routeData?.startCoords),
+    parseCoordsFromValue(routeData?.startLocation),
+    parseCoordsFromValue(routeData?.originCoords),
+    parseCoordsFromValue(routeData?.originLocation),
+    parseCoordsFromValue(routeData?.inicioCoords),
+    parseCoordsFromValue(routeData?.puntoInicioCoords),
+    parseCoordsFromValue(routeData?.schoolCoords),
+    parseCoordsFromValue(routeData?.institutionCoords),
+    parseCoordsFromValue(routeData?.destinationCoords),
+    parseCoordsFromValue(routeData?.destinoCoords),
+    parseCoordsFromValue({
+      lat: profile?.institutionLat,
+      lng: profile?.institutionLng,
+    }),
+  ].filter(Boolean);
+
+  const unique = [];
+  coordsValues.forEach((coords) => {
+    if (
+      unique.some(
+        (candidate) =>
+          candidate.lat === coords.lat && candidate.lng === coords.lng
+      )
+    ) {
+      return;
+    }
+    unique.push(coords);
+  });
+  return unique;
+};
+
+const isOperationalStop = (stop, excludedAddressSet, excludedCoords) => {
+  if (!stop) return false;
+
+  const stopAddressKey = normalizeMatchText(stop.address);
+  const stopTitleKey = normalizeMatchText(stop.title);
+  if (
+    (stopAddressKey && excludedAddressSet.has(stopAddressKey)) ||
+    (stopTitleKey && excludedAddressSet.has(stopTitleKey))
+  ) {
+    return false;
+  }
+
+  if (stop.coords && excludedCoords.length) {
+    const overlaps = excludedCoords.some((candidate) => {
+      const distance = distanceMetersBetween(stop.coords, candidate);
+      return typeof distance === "number" && distance <= 40;
+    });
+    if (overlaps) return false;
+  }
+
+  return true;
+};
+
+const filterOperationalStops = (stops, routeData, profile) => {
+  if (!Array.isArray(stops) || !stops.length) return [];
+  const excludedAddressSet = collectAddressCandidates(routeData, profile);
+  const excludedCoords = collectCoordsCandidates(routeData, profile);
+  const filtered = stops.filter((stop) =>
+    isOperationalStop(stop, excludedAddressSet, excludedCoords)
+  );
+
+  // Avoid breaking routes that do not provide start/school metadata.
+  return filtered.length ? filtered : stops;
+};
+
 export const normalizeRoute = (route) => {
   if (!route) return "";
   return route
@@ -191,11 +324,13 @@ const extractRouteName = (routeDocId, routeData, profile) =>
   toText(routeDocId) ||
   "ruta";
 
-const readRouteStopsFromDoc = async (routeRef, routeData) => {
+const readRouteStopsFromDoc = async (routeRef, routeData, profile) => {
   const inlineStops = parseInlineStops(
     routeData?.addresses ?? routeData?.direcciones ?? routeData?.stops
   );
-  if (inlineStops.length) return inlineStops;
+  if (inlineStops.length) {
+    return filterOperationalStops(inlineStops, routeData, profile);
+  }
 
   for (const addressCollection of ADDRESS_COLLECTIONS) {
     try {
@@ -206,7 +341,9 @@ const readRouteStopsFromDoc = async (routeRef, routeData) => {
           parseStopRecord(item.data(), index, item.id)
         )
       );
-      if (parsed.length) return parsed;
+      if (parsed.length) {
+        return filterOperationalStops(parsed, routeData, profile);
+      }
     } catch (error) {
       // try next collection name
     }
@@ -229,7 +366,7 @@ const readRouteDoc = async ({
 
     const routeData = routeSnap.data();
     const routeName = extractRouteName(routeDocId, routeData, profile);
-    const stops = await readRouteStopsFromDoc(routeRef, routeData);
+    const stops = await readRouteStopsFromDoc(routeRef, routeData, profile);
     if (!stops.length) return null;
 
     return {
