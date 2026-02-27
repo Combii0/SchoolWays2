@@ -611,6 +611,48 @@ a {
   font-weight: 600;
 }
 
+.map-top-island-actions-card {
+  gap: 8px;
+}
+
+.map-top-island-action-button {
+  width: 100%;
+  border: 1px solid rgba(73, 136, 239, 0.34);
+  background: #eaf3ff;
+  color: #11366f;
+  border-radius: 12px;
+  min-height: 40px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-align: center;
+  cursor: pointer;
+  transition: transform 140ms ease, box-shadow 140ms ease, opacity 140ms ease;
+}
+
+.map-top-island-action-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 16px rgba(16, 52, 109, 0.14);
+}
+
+.map-top-island-action-button:active {
+  transform: translateY(0);
+}
+
+.map-top-island-action-button:disabled {
+  opacity: 0.62;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.map-top-island-action-button.danger {
+  background: #fff2f2;
+  border-color: rgba(231, 101, 101, 0.5);
+  color: #8f1b1b;
+}
+
 .map-control {
   position: fixed;
   right: max(16px, env(safe-area-inset-right));

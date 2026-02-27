@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { onAuthStateChanged } from "firebase/auth";
 import {
@@ -64,6 +64,15 @@ const GEOLOCATION_OPTIONS = {
   maximumAge: 2000,
   timeout: 10000,
 };
+const EMPTY_AUTH_ACTIONS = Object.freeze({
+  hasUser: false,
+  canEnableNotifications: false,
+  notificationsPending: false,
+  notificationsMessage: "",
+  logoutPending: false,
+  enableNotifications: null,
+  logout: null,
+});
 const toLowerText = (value) =>
   value === null || value === undefined ? "" : value.toString().trim().toLowerCase();
 
@@ -365,6 +374,7 @@ function HomeContent() {
   const [locationEnabled, setLocationEnabled] = useState(true);
   const [islandExpanded, setIslandExpanded] = useState(false);
   const [routeUsers, setRouteUsers] = useState([]);
+  const [authActions, setAuthActions] = useState(EMPTY_AUTH_ACTIONS);
   const [monitorNextStop, setMonitorNextStop] = useState({
     title: "--",
     order: null,
@@ -2622,10 +2632,21 @@ function HomeContent() {
     monitorNextStop?.order !== null && monitorNextStop?.order !== undefined
       ? `#${monitorNextStop.order}`
       : "--";
+  const canEnableNotifications =
+    Boolean(authActions?.canEnableNotifications) &&
+    typeof authActions?.enableNotifications === "function";
+  const canRunLogout = typeof authActions?.logout === "function";
+  const handleAuthActionsChange = useCallback((nextActions) => {
+    if (!nextActions || typeof nextActions !== "object") {
+      setAuthActions(EMPTY_AUTH_ACTIONS);
+      return;
+    }
+    setAuthActions(nextActions);
+  }, []);
 
   return (
     <main className="map-page">
-      <AuthPanel />
+      <AuthPanel onUserActionsChange={handleAuthActionsChange} />
       {markersLoading ? (
         <div className="map-loading-overlay" role="status" aria-live="polite">
           <div className="map-loading-card">
@@ -2765,6 +2786,35 @@ function HomeContent() {
                   </div>
                 </>
               )}
+              <div className="map-top-island-card map-top-island-actions-card">
+                <div className="map-top-island-label">Opciones de cuenta</div>
+                {canEnableNotifications ? (
+                  <button
+                    type="button"
+                    className="map-top-island-action-button"
+                    onClick={() => authActions.enableNotifications?.()}
+                    disabled={Boolean(authActions?.notificationsPending)}
+                  >
+                    {authActions?.notificationsPending
+                      ? "Activando notificaciones..."
+                      : "Activar notificaciones"}
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="map-top-island-action-button danger"
+                  onClick={() => {
+                    if (!canRunLogout) return;
+                    authActions.logout();
+                  }}
+                  disabled={!canRunLogout || Boolean(authActions?.logoutPending)}
+                >
+                  {authActions?.logoutPending ? "Cerrando sesión..." : "Cerrar sesión"}
+                </button>
+                {authActions?.notificationsMessage ? (
+                  <div className="map-top-island-subline">{authActions.notificationsMessage}</div>
+                ) : null}
+              </div>
             </div>
           </section>
         </div>

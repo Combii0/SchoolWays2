@@ -45,7 +45,7 @@ const setCookie = (name, value, days = 365) => {
   document.cookie = `${name}=${value}; expires=${expires}; path=/`;
 };
 
-export default function AuthPanel() {
+export default function AuthPanel({ onUserActionsChange = null }) {
   const [user, setUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [pending, setPending] = useState(false);
@@ -81,6 +81,7 @@ export default function AuthPanel() {
   const heartbeatRef = useRef(null);
   const forcedAuthErrorRef = useRef("");
   const pushSyncRef = useRef({ uid: "", token: "" });
+  const publishedActionsKeyRef = useRef("");
 
   const resetModal = () => {
     setView("login");
@@ -456,6 +457,52 @@ export default function AuthPanel() {
     }
   };
 
+  useEffect(() => {
+    if (typeof onUserActionsChange !== "function") return;
+    const key = JSON.stringify({
+      uid: user?.uid || "",
+      pushPermission,
+      pushPending,
+      pushMessage,
+      logoutPending: pending,
+      appleInstallRequired,
+      storedPushToken: userProfile?.pushNotifications?.web?.token || "",
+      storedPushEnabled: Boolean(userProfile?.pushNotifications?.web?.enabled),
+    });
+    if (publishedActionsKeyRef.current === key) return;
+    publishedActionsKeyRef.current = key;
+
+    onUserActionsChange({
+      hasUser: Boolean(user),
+      canEnableNotifications: Boolean(user) && pushPermission !== "granted",
+      notificationsPending: pushPending,
+      notificationsMessage: pushMessage,
+      logoutPending: pending,
+      enableNotifications: user ? handleEnableNotifications : null,
+      logout: user ? handleLogout : null,
+    });
+  }, [
+    onUserActionsChange,
+    user,
+    pushPermission,
+    pushPending,
+    pushMessage,
+    pending,
+    appleInstallRequired,
+    userProfile?.pushNotifications?.web?.token,
+    userProfile?.pushNotifications?.web?.enabled,
+    handleEnableNotifications,
+    handleLogout,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      if (typeof onUserActionsChange === "function") {
+        onUserActionsChange(null);
+      }
+    };
+  }, [onUserActionsChange]);
+
   const handleLoginSubmit = async (event) => {
     event.preventDefault();
     if (!loginEmail || !loginPassword) {
@@ -617,95 +664,12 @@ export default function AuthPanel() {
     }
   };
 
-  const displayName =
-    userProfile?.studentName || user?.displayName || "Usuario";
-
   const pushUnsupported = pushPermission === "unsupported";
   const pushPermissionBlocked = pushPermission === "denied";
 
   return (
     <div className="auth-panel" ref={panelRef}>
-      {user ? (
-        <>
-          <button
-            type="button"
-            className="auth-avatar-button"
-            onClick={() => setOpen((prev) => !prev)}
-            aria-haspopup="menu"
-            aria-expanded={open}
-            disabled={pending}
-          >
-            {user.photoURL ? (
-              <img
-                src={user.photoURL}
-                alt={displayName}
-                className="auth-avatar"
-              />
-            ) : (
-              <div className="auth-avatar fallback" aria-hidden="true">
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path
-                    d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm0 2c-4.42 0-8 2.24-8 5v1h16v-1c0-2.76-3.58-5-8-5Z"
-                    fill="#1b2430"
-                  />
-                </svg>
-              </div>
-            )}
-          </button>
-          {open ? (
-            <div className="auth-menu" role="menu">
-              <div className="auth-menu-user">
-                <span className="auth-name">{displayName}</span>
-                {userProfile?.institutionName ? (
-                  <span className="auth-meta-line">
-                    Colegio: {userProfile.institutionName}
-                  </span>
-                ) : null}
-                {userProfile?.route ? (
-                  <span className="auth-meta-line">
-                    Ruta: {userProfile.route}
-                  </span>
-                ) : null}
-                <span className="auth-meta-line">
-                  Notificaciones:{" "}
-                  {pushPermission === "granted"
-                    ? "activas"
-                    : pushPermission === "denied"
-                      ? "bloqueadas"
-                      : "pendientes"}
-                </span>
-              </div>
-              {pushPermission !== "granted" ? (
-                <button
-                  type="button"
-                  className="auth-menu-action"
-                  onClick={handleEnableNotifications}
-                  disabled={pending || pushPending}
-                  role="menuitem"
-                >
-                  {pushPending ? "Activando..." : "Activar notificaciones"}
-                </button>
-              ) : null}
-              {pushMessage ? <div className="auth-meta-line">{pushMessage}</div> : null}
-              <button
-                type="button"
-                className="auth-menu-action"
-                onClick={handleLogout}
-                disabled={pending}
-                role="menuitem"
-              >
-                Cerrar sesión
-              </button>
-            </div>
-          ) : null}
-        </>
-      ) : (
+      {user ? null : (
         <>
           {open ? (
             <div
