@@ -20,6 +20,7 @@ import {
   LOCATION_TOGGLE_EVENT,
 } from "./components/LiveLocationTicker";
 import { auth, db } from "./lib/firebaseClient";
+import { estimateMetricsForPoints, recordObservedSpeed } from "./lib/etaPredictor";
 import { geocodeAddressToCoords } from "./lib/geocodeClient";
 import {
   getRouteId,
@@ -53,7 +54,6 @@ const MAP_STATE_STORAGE_KEY = "schoolways:mapState";
 const TRAIL_ENABLED_STORAGE_KEY = "schoolways:trailEnabled";
 const LAST_BUS_COORDS_MAX_AGE_MS = 90 * 1000;
 const ROUTE_REFRESH_INTERVAL_MS = 120000;
-const ETA_ESTIMATED_SPEED_KMH = 24;
 const ROUTE_STOPS_SUBCOLLECTIONS = ["direcciones", "addresses", "stops"];
 const ROUTE_DAILY_COLLECTIONS = ["routes", "rutas"];
 const ROUTE_LIVE_COLLECTIONS = ["routes", "rutas"];
@@ -335,6 +335,7 @@ function HomeContent() {
   const locationRetryAfterRef = useRef(0);
   const lastPositionRef = useRef(null);
   const lastUploadRef = useRef(0);
+  const lastSpeedSampleRef = useRef(null);
   const profileRef = useRef(null);
   const geocoderRef = useRef(null);
   const schoolMarkerRef = useRef(null);
@@ -442,6 +443,12 @@ function HomeContent() {
 
   useEffect(() => {
     profileRef.current = profile;
+    const nextRouteId = getRouteId(profile?.route);
+    const lastSample = lastSpeedSampleRef.current;
+    if (!lastSample) return;
+    if (!nextRouteId || lastSample.routeId !== nextRouteId) {
+      lastSpeedSampleRef.current = null;
+    }
   }, [profileRouteSignature]);
 
   useEffect(() => {
@@ -890,6 +897,8 @@ function HomeContent() {
       : Date.now();
     setLastLocationUpdatedAt(markerUpdatedAt);
     lastPositionRef.current = coords;
+    const currentProfile = profileRef.current;
+    const currentRouteId = getRouteId(currentProfile?.route);
 
     if (!userMarkerRef.current) {
       userMarkerRef.current = createMarker(google, {
@@ -904,13 +913,30 @@ function HomeContent() {
 
     appendTrailPoint(google, map, coords);
 
+    if (currentRouteId) {
+      const lastSample = lastSpeedSampleRef.current;
+      if (lastSample && lastSample.routeId === currentRouteId) {
+        recordObservedSpeed({
+          routeId: currentRouteId,
+          from: lastSample.coords,
+          to: coords,
+          startedAtMs: lastSample.at,
+          endedAtMs: markerUpdatedAt,
+        });
+      }
+      lastSpeedSampleRef.current = {
+        routeId: currentRouteId,
+        coords: { lat: coords.lat, lng: coords.lng },
+        at: markerUpdatedAt,
+      };
+    }
+
     if (shouldUpload) {
       void maybeUploadLocation(coords);
     }
 
     try {
       if (typeof window !== "undefined") {
-        const currentProfile = profileRef.current;
         window.localStorage.setItem(
           LAST_BUS_COORDS_STORAGE_KEY,
           JSON.stringify({
@@ -947,60 +973,11 @@ function HomeContent() {
   const fetchRoutesData = async (points, options = {}, timeoutMs = 9000) => {
     void options;
     void timeoutMs;
-
-    if (!Array.isArray(points) || points.length < 2) {
-      return { ok: false, data: {} };
-    }
-
-    const normalized = points.map((point) => {
-      const lat = Number(point?.lat);
-      const lng = Number(point?.lng);
-      return {
-        lat,
-        lng,
-        valid: Number.isFinite(lat) && Number.isFinite(lng),
-      };
+    return estimateMetricsForPoints({
+      points,
+      routeId: getRouteId(profileRef.current?.route),
+      timestampMs: Date.now(),
     });
-
-    if (normalized.some((point) => !point.valid)) {
-      return { ok: false, data: {} };
-    }
-
-    const legs = [];
-    let distanceMetersTotal = 0;
-
-    for (let index = 0; index < normalized.length - 1; index += 1) {
-      const segmentDistance = distanceMetersBetween(normalized[index], normalized[index + 1]);
-      const safeDistance =
-        typeof segmentDistance === "number" && Number.isFinite(segmentDistance)
-          ? Math.max(0, segmentDistance)
-          : 0;
-      distanceMetersTotal += safeDistance;
-      const durationSeconds = Math.max(
-        1,
-        Math.round(((safeDistance / 1000) / ETA_ESTIMATED_SPEED_KMH) * 3600)
-      );
-      legs.push({
-        distanceMeters: Math.round(safeDistance),
-        duration: `${durationSeconds}s`,
-      });
-    }
-
-    const totalDurationSeconds = Math.max(
-      1,
-      Math.round(((distanceMetersTotal / 1000) / ETA_ESTIMATED_SPEED_KMH) * 3600)
-    );
-
-    return {
-      ok: true,
-      data: {
-        distanceMeters: Math.round(distanceMetersTotal),
-        duration: `${totalDurationSeconds}s`,
-        legs,
-        optimizedIntermediateWaypointIndex: [],
-        source: "local_estimate",
-      },
-    };
   };
 
   const sumLegs = (legs, startIndex, endIndexInclusive) => {

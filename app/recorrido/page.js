@@ -17,6 +17,7 @@ import {
   where,
 } from "firebase/firestore";
 import AuthPanel from "../components/AuthPanel";
+import { estimateMetricsForPoints, recordObservedSpeed } from "../lib/etaPredictor";
 import { auth, db } from "../lib/firebaseClient";
 import { geocodeAddressToCoords } from "../lib/geocodeClient";
 import {
@@ -40,7 +41,6 @@ const GEOLOCATION_OPTIONS = {
   timeout: 10000,
 };
 const ETA_REFRESH_INTERVAL_MS = 120000;
-const ETA_ESTIMATED_SPEED_KMH = 24;
 
 const toLowerText = (value) =>
   value === null || value === undefined ? "" : value.toString().trim().toLowerCase();
@@ -217,62 +217,13 @@ const parseDurationSeconds = (value) => {
 };
 
 const fetchRoutesData = async (points, options = {}, timeoutMs = 9000) => {
-  void options;
   void timeoutMs;
-
-  if (!Array.isArray(points) || points.length < 2) {
-    return { ok: false, data: {} };
-  }
-
-  const normalized = points.map((point) => {
-    const lat = Number(point?.lat);
-    const lng = Number(point?.lng);
-    return {
-      lat,
-      lng,
-      valid: Number.isFinite(lat) && Number.isFinite(lng),
-    };
+  const routeId = getRouteId(options?.routeId || options?.route);
+  return estimateMetricsForPoints({
+    points,
+    routeId,
+    timestampMs: Date.now(),
   });
-
-  if (normalized.some((point) => !point.valid)) {
-    return { ok: false, data: {} };
-  }
-
-  const legs = [];
-  let distanceMetersTotal = 0;
-
-  for (let index = 0; index < normalized.length - 1; index += 1) {
-    const segmentDistance = distanceMetersBetween(normalized[index], normalized[index + 1]);
-    const safeDistance =
-      typeof segmentDistance === "number" && Number.isFinite(segmentDistance)
-        ? Math.max(0, segmentDistance)
-        : 0;
-    distanceMetersTotal += safeDistance;
-    const durationSeconds = Math.max(
-      1,
-      Math.round(((safeDistance / 1000) / ETA_ESTIMATED_SPEED_KMH) * 3600)
-    );
-    legs.push({
-      distanceMeters: Math.round(safeDistance),
-      duration: `${durationSeconds}s`,
-    });
-  }
-
-  const totalDurationSeconds = Math.max(
-    1,
-    Math.round(((distanceMetersTotal / 1000) / ETA_ESTIMATED_SPEED_KMH) * 3600)
-  );
-
-  return {
-    ok: true,
-    data: {
-      distanceMeters: Math.round(distanceMetersTotal),
-      duration: `${totalDurationSeconds}s`,
-      legs,
-      optimizedIntermediateWaypointIndex: [],
-      source: "local_estimate",
-    },
-  };
 };
 
 const sumLegs = (legs, startIndex, endIndexInclusive) => {
@@ -332,9 +283,13 @@ export default function RecorridoPage() {
   const geocodedStopsRef = useRef(new Map());
   const geocodingStopsRef = useRef(new Map());
   const pushSyncRef = useRef({ at: 0, signature: "", inFlight: false });
+  const lastSpeedSampleRef = useRef(null);
   const router = useRouter();
 
   const isMonitor = isMonitorProfile(profile);
+  const busCoordsSignature = busCoords
+    ? `${busCoords.lat.toFixed(6)},${busCoords.lng.toFixed(6)}`
+    : "";
 
   const resolveRouteKey = (currentProfile) =>
     resolveRouteKeyFromStops(currentProfile, routeStopsByKey);
@@ -1034,6 +989,32 @@ export default function RecorridoPage() {
   }, [profile, isMonitor, routeStopsByKey]);
 
   useEffect(() => {
+    const routeId = getRouteId(profile?.route);
+    if (!routeId || !busCoords) {
+      lastSpeedSampleRef.current = null;
+      return;
+    }
+
+    const now = Date.now();
+    const lastSample = lastSpeedSampleRef.current;
+    if (lastSample && lastSample.routeId === routeId) {
+      recordObservedSpeed({
+        routeId,
+        from: lastSample.coords,
+        to: busCoords,
+        startedAtMs: lastSample.at,
+        endedAtMs: now,
+      });
+    }
+
+    lastSpeedSampleRef.current = {
+      routeId,
+      coords: { lat: busCoords.lat, lng: busCoords.lng },
+      at: now,
+    };
+  }, [profile?.route, busCoordsSignature]);
+
+  useEffect(() => {
     const updateEtas = async () => {
       if (!profile || !busCoords) return;
       const { routeKey } = resolveRouteIdentity(profile);
@@ -1089,6 +1070,7 @@ export default function RecorridoPage() {
       let routeData = null;
       if (points.length >= 2) {
         const { ok, data } = await fetchRoutesData(points, {
+          routeId: profile?.route,
           optimizeWaypoints: Boolean(schoolCoords && activeWithCoords.length > 1),
         });
         if (ok) {
@@ -1121,7 +1103,7 @@ export default function RecorridoPage() {
             const direct = await fetchRoutesData([
               { lat: busCoords.lat, lng: busCoords.lng },
               { lat: stop.coords.lat, lng: stop.coords.lng },
-            ]);
+            ], { routeId: profile?.route });
             if (direct.ok) {
               distanceMeters =
                 typeof direct.data?.distanceMeters === "number"
