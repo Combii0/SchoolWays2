@@ -691,10 +691,37 @@ a {
   animation: location-toggle-off 240ms ease;
 }
 
+.map-trail-toggle {
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: calc(202px + env(safe-area-inset-bottom));
+  z-index: 26;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #637182;
+  border: none;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.16);
+  cursor: pointer;
+  transition: transform 180ms ease, box-shadow 180ms ease, color 220ms ease,
+    background 220ms ease;
+  animation: location-toggle-off 240ms ease;
+}
+
 .map-location-toggle.active {
   background: #1d68ff;
   color: #ffffff;
   box-shadow: 0 12px 26px rgba(29, 104, 255, 0.45);
+  animation: location-toggle-on 260ms ease;
+}
+
+.map-trail-toggle.active {
+  background: #22d2c5;
+  color: #ffffff;
+  box-shadow: 0 12px 26px rgba(34, 210, 197, 0.46);
   animation: location-toggle-on 260ms ease;
 }
 
@@ -707,11 +734,28 @@ a {
   animation: location-glow 1.2s ease-out infinite;
 }
 
+.map-trail-toggle.active::after {
+  content: "";
+  position: absolute;
+  inset: -5px;
+  border-radius: 50%;
+  border: 2px solid rgba(34, 210, 197, 0.44);
+  animation: location-glow 1.2s ease-out infinite;
+}
+
 .map-location-toggle:hover {
   transform: translateY(-1px);
 }
 
+.map-trail-toggle:hover {
+  transform: translateY(-1px);
+}
+
 .map-location-toggle:active {
+  transform: translateY(0);
+}
+
+.map-trail-toggle:active {
   transform: translateY(0);
 }
 
@@ -735,6 +779,10 @@ a {
 
   .map-location-toggle {
     bottom: calc(160px + env(safe-area-inset-bottom));
+  }
+
+  .map-trail-toggle {
+    bottom: calc(216px + env(safe-area-inset-bottom));
   }
 }
 

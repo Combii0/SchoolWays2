@@ -50,15 +50,15 @@ const STOP_REACHED_METERS = 180;
 const MAP_MARKER_REFRESH_INTERVAL_MS = 4000;
 const LAST_BUS_COORDS_STORAGE_KEY = "schoolways:last-bus-coords";
 const MAP_STATE_STORAGE_KEY = "schoolways:mapState";
+const TRAIL_ENABLED_STORAGE_KEY = "schoolways:trailEnabled";
 const LAST_BUS_COORDS_MAX_AGE_MS = 90 * 1000;
 const ROUTE_REFRESH_INTERVAL_MS = 9000;
-const ROUTE_GRADIENT_START = { r: 113, g: 210, b: 255 };
-const ROUTE_GRADIENT_END = { r: 34, g: 232, b: 188 };
-const MAX_GRADIENT_SEGMENTS = 96;
 const ROUTE_STOPS_SUBCOLLECTIONS = ["direcciones", "addresses", "stops"];
 const ROUTE_DAILY_COLLECTIONS = ["routes", "rutas"];
 const ROUTE_LIVE_COLLECTIONS = ["routes", "rutas"];
 const LIVE_HIGH_ACCURACY_MAX_METERS = 60;
+const TRAIL_MIN_POINT_METERS = 8;
+const TRAIL_STROKE_COLOR = "#22d2c5";
 const GEOLOCATION_OPTIONS = {
   enableHighAccuracy: true,
   maximumAge: 2000,
@@ -79,6 +79,9 @@ const toLowerText = (value) =>
 const isMonitorProfile = (profile) => {
   const role = toLowerText(profile?.role);
   const accountType = toLowerText(profile?.accountType);
+  if (role.includes("monitor") || accountType.includes("monitor")) {
+    return true;
+  }
   return (
     role === "monitor" ||
     role === "monitora" ||
@@ -340,8 +343,8 @@ function HomeContent() {
   const schoolAddressRef = useRef(null);
   const completedStopsRef = useRef(new Set());
   const studentPickedUpRef = useRef(false);
-  const routePolylineRef = useRef([]);
-  const routeKeyRef = useRef(null);
+  const trailPolylineRef = useRef(null);
+  const trailPathRef = useRef([]);
   const routeRefreshRef = useRef({ at: 0, signature: "" });
   const monitorPushSyncRef = useRef({ at: 0, signature: "", inFlight: false });
   const monitorPushWarnRef = useRef({ at: 0, key: "" });
@@ -372,6 +375,7 @@ function HomeContent() {
   const [dailyStopStatuses, setDailyStopStatuses] = useState({});
   const [liveExcludedStopKeys, setLiveExcludedStopKeys] = useState([]);
   const [locationEnabled, setLocationEnabled] = useState(true);
+  const [trailEnabled, setTrailEnabled] = useState(false);
   const [islandExpanded, setIslandExpanded] = useState(false);
   const [routeUsers, setRouteUsers] = useState([]);
   const [authActions, setAuthActions] = useState(EMPTY_AUTH_ACTIONS);
@@ -403,17 +407,28 @@ function HomeContent() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const raw = window.localStorage.getItem(LOCATION_ENABLED_STORAGE_KEY);
-    setLocationEnabled(raw === null ? true : raw === "1");
+    const locationRaw = window.localStorage.getItem(LOCATION_ENABLED_STORAGE_KEY);
+    const trailRaw = window.localStorage.getItem(TRAIL_ENABLED_STORAGE_KEY);
+    setLocationEnabled(locationRaw === null ? true : locationRaw === "1");
+    setTrailEnabled(trailRaw === "1");
 
     const handleStorage = (event) => {
-      if (event?.key !== LOCATION_ENABLED_STORAGE_KEY) return;
-      const nextRaw = window.localStorage.getItem(LOCATION_ENABLED_STORAGE_KEY);
-      setLocationEnabled(nextRaw === null ? true : nextRaw === "1");
+      if (
+        event?.key !== LOCATION_ENABLED_STORAGE_KEY &&
+        event?.key !== TRAIL_ENABLED_STORAGE_KEY
+      ) {
+        return;
+      }
+      const nextLocationRaw = window.localStorage.getItem(LOCATION_ENABLED_STORAGE_KEY);
+      const nextTrailRaw = window.localStorage.getItem(TRAIL_ENABLED_STORAGE_KEY);
+      setLocationEnabled(nextLocationRaw === null ? true : nextLocationRaw === "1");
+      setTrailEnabled(nextTrailRaw === "1");
     };
     const handleToggle = () => {
-      const nextRaw = window.localStorage.getItem(LOCATION_ENABLED_STORAGE_KEY);
-      setLocationEnabled(nextRaw === null ? true : nextRaw === "1");
+      const nextLocationRaw = window.localStorage.getItem(LOCATION_ENABLED_STORAGE_KEY);
+      const nextTrailRaw = window.localStorage.getItem(TRAIL_ENABLED_STORAGE_KEY);
+      setLocationEnabled(nextLocationRaw === null ? true : nextLocationRaw === "1");
+      setTrailEnabled(nextTrailRaw === "1");
     };
 
     window.addEventListener("storage", handleStorage);
@@ -886,6 +901,8 @@ function HomeContent() {
       setMarkerPosition(userMarkerRef.current, coords);
     }
 
+    appendTrailPoint(google, map, coords);
+
     if (shouldUpload) {
       void maybeUploadLocation(coords);
     }
@@ -948,44 +965,6 @@ function HomeContent() {
     }
   };
 
-  const decodePolyline = (encoded) => {
-    if (!encoded) return [];
-    let index = 0;
-    let lat = 0;
-    let lng = 0;
-    const coordinates = [];
-
-    while (index < encoded.length) {
-      let result = 0;
-      let shift = 0;
-      let byte = null;
-      do {
-        byte = encoded.charCodeAt(index++) - 63;
-        result |= (byte & 0x1f) << shift;
-        shift += 5;
-      } while (byte >= 0x20);
-      const deltaLat = result & 1 ? ~(result >> 1) : result >> 1;
-      lat += deltaLat;
-
-      result = 0;
-      shift = 0;
-      do {
-        byte = encoded.charCodeAt(index++) - 63;
-        result |= (byte & 0x1f) << shift;
-        shift += 5;
-      } while (byte >= 0x20);
-      const deltaLng = result & 1 ? ~(result >> 1) : result >> 1;
-      lng += deltaLng;
-
-      coordinates.push({
-        lat: lat / 1e5,
-        lng: lng / 1e5,
-      });
-    }
-
-    return coordinates;
-  };
-
   const sumLegs = (legs, startIndex, endIndexInclusive) => {
     if (!Array.isArray(legs) || !legs.length) {
       return { distanceMeters: null, durationSeconds: null };
@@ -1019,119 +998,56 @@ function HomeContent() {
     };
   };
 
-  const clampChannel = (value) => {
-    const rounded = Math.round(value);
-    if (rounded < 0) return 0;
-    if (rounded > 255) return 255;
-    return rounded;
-  };
-
-  const interpolateColor = (start, end, t) => {
-    const ratio = Math.max(0, Math.min(1, t));
-    const r = clampChannel(start.r + (end.r - start.r) * ratio);
-    const g = clampChannel(start.g + (end.g - start.g) * ratio);
-    const b = clampChannel(start.b + (end.b - start.b) * ratio);
-    return `rgb(${r}, ${g}, ${b})`;
-  };
-
-  const setRoutePolylinePath = (google, map, path, options = {}) => {
-    if (!Array.isArray(path) || path.length < 2) return false;
-
-    if (Array.isArray(routePolylineRef.current) && routePolylineRef.current.length) {
-      routePolylineRef.current.forEach((polyline) => {
-        polyline?.setMap?.(null);
-      });
-      routePolylineRef.current = [];
+  const clearTrailPolyline = () => {
+    if (trailPolylineRef.current) {
+      trailPolylineRef.current.setMap(null);
+      trailPolylineRef.current = null;
     }
+    trailPathRef.current = [];
+  };
 
-    const lineOptions = {
-      strokeOpacity: 1,
-      strokeWeight: 10,
-      zIndex: 2,
-      geodesic: true,
-      ...(options?.line || {}),
-    };
-    const totalSegments = path.length - 1;
-    const chunkCount = Math.min(totalSegments, MAX_GRADIENT_SEGMENTS);
-    const chunkSize = Math.max(1, Math.ceil(totalSegments / chunkCount));
-    const created = [];
-
-    for (let chunk = 0; chunk < chunkCount; chunk += 1) {
-      const startIndex = chunk * chunkSize;
-      const endIndex = Math.min((chunk + 1) * chunkSize, path.length - 1);
-      if (endIndex <= startIndex) continue;
-
-      const chunkPath = path.slice(startIndex, endIndex + 1);
-      const ratio = chunkCount === 1 ? 1 : chunk / (chunkCount - 1);
-      const strokeColor = interpolateColor(
-        ROUTE_GRADIENT_START,
-        ROUTE_GRADIENT_END,
-        ratio
-      );
-
-      const polyline = new google.maps.Polyline({
-        path: chunkPath,
+  const ensureTrailPolyline = (google, map) => {
+    if (!trailPolylineRef.current) {
+      trailPolylineRef.current = new google.maps.Polyline({
         map,
-        strokeColor,
-        ...lineOptions,
+        path: [],
+        strokeColor: TRAIL_STROKE_COLOR,
+        strokeOpacity: 0.95,
+        strokeWeight: 7,
+        geodesic: true,
+        zIndex: 4,
       });
-      created.push(polyline);
+      return trailPolylineRef.current;
     }
 
-    routePolylineRef.current = created;
-    return created.length > 0;
-  };
-
-  const drawRouteWithDirectionsService = async (
-    google,
-    map,
-    routeCoords,
-    options = {}
-  ) => {
-    if (!Array.isArray(routeCoords) || routeCoords.length < 2) return false;
-    const directionsService = new google.maps.DirectionsService();
-    const waypoints = routeCoords.slice(1, -1).map((point) => ({
-      location: point,
-      stopover: true,
-    }));
-
-    return new Promise((resolve) => {
-      directionsService.route(
-        {
-          origin: routeCoords[0],
-          destination: routeCoords[routeCoords.length - 1],
-          waypoints,
-          optimizeWaypoints: Boolean(options?.optimizeWaypoints),
-          travelMode: google.maps.TravelMode.DRIVING,
-          avoidFerries: true,
-        },
-        (result, status) => {
-          if (
-            status !== "OK" ||
-            !result?.routes?.[0]?.overview_path ||
-            !result.routes[0].overview_path.length
-          ) {
-            resolve(false);
-            return;
-          }
-
-          const path = result.routes[0].overview_path.map((point) => ({
-            lat: point.lat(),
-            lng: point.lng(),
-          }));
-          resolve(setRoutePolylinePath(google, map, path));
-        }
-      );
-    });
-  };
-
-  const clearRoutePolyline = () => {
-    if (Array.isArray(routePolylineRef.current) && routePolylineRef.current.length) {
-      routePolylineRef.current.forEach((polyline) => {
-        polyline?.setMap?.(null);
-      });
-      routePolylineRef.current = [];
+    if (typeof trailPolylineRef.current.setMap === "function") {
+      trailPolylineRef.current.setMap(map);
     }
+    return trailPolylineRef.current;
+  };
+
+  const appendTrailPoint = (google, map, coords) => {
+    if (!trailEnabled || !locationEnabled || !isMonitorProfile(profileRef.current)) return;
+
+    const lat = Number(coords?.lat);
+    const lng = Number(coords?.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+    const nextPoint = { lat, lng };
+    const path = trailPathRef.current;
+    const previousPoint = path.length ? path[path.length - 1] : null;
+    const jumpMeters = distanceMetersBetween(previousPoint, nextPoint);
+    if (
+      previousPoint &&
+      typeof jumpMeters === "number" &&
+      jumpMeters < TRAIL_MIN_POINT_METERS
+    ) {
+      return;
+    }
+
+    path.push(nextPoint);
+    const polyline = ensureTrailPolyline(google, map);
+    polyline.setPath(path);
   };
 
   const stopLocationWatch = () => {
@@ -1509,13 +1425,6 @@ function HomeContent() {
             .filter(Boolean)
         : pendingStops;
     const legs = Array.isArray(routeData?.legs) ? routeData.legs : [];
-
-    if (routeData?.encodedPolyline && window.google && mapInstanceRef.current) {
-      const path = decodePolyline(routeData.encodedPolyline);
-      if (path.length) {
-        setRoutePolylinePath(window.google, mapInstanceRef.current, path);
-      }
-    }
 
     if (isMonitorProfile(profile)) {
       if (orderedPending.length) {
@@ -2125,59 +2034,6 @@ function HomeContent() {
         stopReadyRef.current = true;
         updateLoadingState();
 
-        const routeCoords = resolvedList.map((item) => item.coords);
-        const pointsForRoute = routeCoords.map((point) => ({
-          lat: point.lat(),
-          lng: point.lng(),
-        }));
-        if (schoolCoords) {
-          pointsForRoute.push({ lat: schoolCoords.lat(), lng: schoolCoords.lng() });
-        }
-        const optimizeWaypoints = pointsForRoute.length > 3;
-        const routeSignature = routeCoords
-          .map((point) => `${point.lat().toFixed(6)},${point.lng().toFixed(6)}`)
-          .join("|") + (schoolCoords ? `|school:${schoolCoords.lat().toFixed(6)},${schoolCoords.lng().toFixed(6)}` : "");
-        const routeRenderKey = `${routeKey || "route"}:${routeSignature}:${optimizeWaypoints ? "opt" : "plain"}`;
-
-        if (
-          pointsForRoute.length >= 2 &&
-          (routeKeyRef.current !== routeRenderKey ||
-            !Array.isArray(routePolylineRef.current) ||
-            routePolylineRef.current.length === 0)
-        ) {
-          routeKeyRef.current = routeRenderKey;
-          let routeDrawn = false;
-          try {
-            const { ok, data } = await fetchRoutesData(pointsForRoute, {
-              optimizeWaypoints,
-            });
-            if (ok && data?.encodedPolyline) {
-              const path = decodePolyline(data.encodedPolyline);
-              if (path.length) {
-                routeDrawn = setRoutePolylinePath(google, map, path);
-              }
-            }
-          } catch (err) {
-            routeDrawn = false;
-          }
-
-          if (!routeDrawn) {
-            routeDrawn = await drawRouteWithDirectionsService(
-              google,
-              map,
-              pointsForRoute.map(
-                (point) => new google.maps.LatLng(point.lat, point.lng)
-              ),
-              { optimizeWaypoints }
-            );
-          }
-
-          if (!routeDrawn) {
-            clearRoutePolyline();
-            routeKeyRef.current = null;
-          }
-        }
-
         if (!hasFitRef.current) {
           const bounds = new google.maps.LatLngBounds();
           resolvedList.forEach((item) => bounds.extend(item.coords));
@@ -2200,7 +2056,6 @@ function HomeContent() {
         if (schoolMarkerRef.current) {
           setMarkerMap(schoolMarkerRef.current, null);
         }
-        clearRoutePolyline();
       }
 
       if (lastPositionRef.current) {
@@ -2291,6 +2146,7 @@ function HomeContent() {
     return () => {
       isMounted = false;
       stopLocationWatch();
+      clearTrailPolyline();
     };
   }, []);
 
@@ -2519,12 +2375,7 @@ function HomeContent() {
   useEffect(() => {
     if (!profile) return;
     const interval = setInterval(() => {
-      if (
-        !stopReadyRef.current ||
-        !schoolReadyRef.current ||
-        !Array.isArray(routePolylineRef.current) ||
-        routePolylineRef.current.length === 0
-      ) {
+      if (!stopReadyRef.current || !schoolReadyRef.current) {
         updateRouteMarkers();
       }
     }, 4000);
@@ -2555,6 +2406,21 @@ function HomeContent() {
       });
     }
   }, [markersLoading, mapReady]);
+
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!mapReady || !map) return;
+
+    const isMonitor = isMonitorProfile(profileRef.current);
+    if (!isMonitor || !trailEnabled) {
+      clearTrailPolyline();
+      return;
+    }
+
+    if (trailPolylineRef.current) {
+      trailPolylineRef.current.setMap(map);
+    }
+  }, [profileRouteSignature, mapReady, trailEnabled]);
 
   const handleCenter = () => {
     const map = mapInstanceRef.current;
@@ -2614,6 +2480,28 @@ function HomeContent() {
     } else if (profile && isMonitorProfile(profile)) {
       requestLocation({ force: true });
     }
+  };
+
+  const handleToggleTrail = () => {
+    if (typeof window === "undefined") return;
+    const next = !trailEnabled;
+    setTrailEnabled(next);
+    window.localStorage.setItem(TRAIL_ENABLED_STORAGE_KEY, next ? "1" : "0");
+
+    clearTrailPolyline();
+    if (!next) return;
+
+    const map = mapInstanceRef.current;
+    if (!map || !window.google) return;
+
+    const lat = Number(lastPositionRef.current?.lat);
+    const lng = Number(lastPositionRef.current?.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+    const startPoint = { lat, lng };
+    trailPathRef.current = [startPoint];
+    const polyline = ensureTrailPolyline(window.google, map);
+    polyline.setPath(trailPathRef.current);
   };
 
   const profileDisplayName = getProfileDisplayName(profile) || "Estudiante";
@@ -2831,6 +2719,39 @@ function HomeContent() {
             </div>
           </div>
         </div>
+      ) : null}
+      {profile && isProfileMonitor ? (
+        <button
+          type="button"
+          className={trailEnabled ? "map-trail-toggle active" : "map-trail-toggle"}
+          onClick={handleToggleTrail}
+          aria-label={
+            trailEnabled ? "Desactivar marcado del recorrido" : "Activar marcado del recorrido"
+          }
+          title={trailEnabled ? "Recorrido activo" : "Recorrido desactivado"}
+        >
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true"
+          >
+            <path
+              d="M3.75 20.25h4.2l10.2-10.2a1.6 1.6 0 0 0 0-2.26l-1.95-1.95a1.6 1.6 0 0 0-2.26 0l-10.2 10.2v4.2Z"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinejoin="round"
+            />
+            <path
+              d="M12.9 6.95l4.15 4.15"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+            />
+          </svg>
+        </button>
       ) : null}
       {profile && isProfileMonitor ? (
         <button
