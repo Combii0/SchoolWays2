@@ -2738,7 +2738,6 @@ function HomeContent() {
             <div className="eta-metric">
               {etaMinutes !== null ? `${etaMinutes} min` : "--"}
             </div>
-            <div className="eta-sub eta-updated">Actualizado: {lastUpdateLabel}</div>
             <div className="eta-sub">
               {etaDistanceKm !== null ? `${etaDistanceKm} km` : "-- km"}
             </div>

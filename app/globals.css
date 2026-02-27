@@ -86,8 +86,8 @@ a {
   left: 50%;
   bottom: calc(58px + env(safe-area-inset-bottom));
   transform: translateX(-50%);
-  width: 232px;
-  min-height: 118px;
+  width: 210px;
+  height: 90px;
   border-radius: 180px 180px 0 0;
   background: #f8fbff;
   box-shadow: 0 14px 30px rgba(10, 84, 168, 0.25);
@@ -97,7 +97,6 @@ a {
   border: 2px solid rgba(64, 156, 255, 0.18);
   border-bottom: 0;
   overflow: hidden;
-  padding: 6px 10px 8px;
 }
 
 .eta-bubble-inner {
@@ -123,14 +122,6 @@ a {
 .eta-sub {
   font-size: 12px;
   color: #4b6fa6;
-}
-
-.eta-updated {
-  font-size: 11px;
-  color: #2d5ea8;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  line-height: 1.2;
 }
 
 .route-page {
