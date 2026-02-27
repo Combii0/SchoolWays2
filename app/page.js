@@ -52,7 +52,8 @@ const LAST_BUS_COORDS_STORAGE_KEY = "schoolways:last-bus-coords";
 const MAP_STATE_STORAGE_KEY = "schoolways:mapState";
 const TRAIL_ENABLED_STORAGE_KEY = "schoolways:trailEnabled";
 const LAST_BUS_COORDS_MAX_AGE_MS = 90 * 1000;
-const ROUTE_REFRESH_INTERVAL_MS = 9000;
+const ROUTE_REFRESH_INTERVAL_MS = 120000;
+const ETA_ESTIMATED_SPEED_KMH = 24;
 const ROUTE_STOPS_SUBCOLLECTIONS = ["direcciones", "addresses", "stops"];
 const ROUTE_DAILY_COLLECTIONS = ["routes", "rutas"];
 const ROUTE_LIVE_COLLECTIONS = ["routes", "rutas"];
@@ -944,25 +945,62 @@ function HomeContent() {
   };
 
   const fetchRoutesData = async (points, options = {}, timeoutMs = 9000) => {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const response = await fetch("/api/routes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          points,
-          optimizeWaypoints: Boolean(options?.optimizeWaypoints),
-        }),
-        signal: controller.signal,
-      });
-      const data = await response.json().catch(() => ({}));
-      return { ok: response.ok, data };
-    } catch (error) {
+    void options;
+    void timeoutMs;
+
+    if (!Array.isArray(points) || points.length < 2) {
       return { ok: false, data: {} };
-    } finally {
-      clearTimeout(timeoutId);
     }
+
+    const normalized = points.map((point) => {
+      const lat = Number(point?.lat);
+      const lng = Number(point?.lng);
+      return {
+        lat,
+        lng,
+        valid: Number.isFinite(lat) && Number.isFinite(lng),
+      };
+    });
+
+    if (normalized.some((point) => !point.valid)) {
+      return { ok: false, data: {} };
+    }
+
+    const legs = [];
+    let distanceMetersTotal = 0;
+
+    for (let index = 0; index < normalized.length - 1; index += 1) {
+      const segmentDistance = distanceMetersBetween(normalized[index], normalized[index + 1]);
+      const safeDistance =
+        typeof segmentDistance === "number" && Number.isFinite(segmentDistance)
+          ? Math.max(0, segmentDistance)
+          : 0;
+      distanceMetersTotal += safeDistance;
+      const durationSeconds = Math.max(
+        1,
+        Math.round(((safeDistance / 1000) / ETA_ESTIMATED_SPEED_KMH) * 3600)
+      );
+      legs.push({
+        distanceMeters: Math.round(safeDistance),
+        duration: `${durationSeconds}s`,
+      });
+    }
+
+    const totalDurationSeconds = Math.max(
+      1,
+      Math.round(((distanceMetersTotal / 1000) / ETA_ESTIMATED_SPEED_KMH) * 3600)
+    );
+
+    return {
+      ok: true,
+      data: {
+        distanceMeters: Math.round(distanceMetersTotal),
+        duration: `${totalDurationSeconds}s`,
+        legs,
+        optimizedIntermediateWaypointIndex: [],
+        source: "local_estimate",
+      },
+    };
   };
 
   const sumLegs = (legs, startIndex, endIndexInclusive) => {

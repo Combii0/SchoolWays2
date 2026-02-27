@@ -39,6 +39,8 @@ const GEOLOCATION_OPTIONS = {
   maximumAge: 2000,
   timeout: 10000,
 };
+const ETA_REFRESH_INTERVAL_MS = 120000;
+const ETA_ESTIMATED_SPEED_KMH = 24;
 
 const toLowerText = (value) =>
   value === null || value === undefined ? "" : value.toString().trim().toLowerCase();
@@ -215,25 +217,62 @@ const parseDurationSeconds = (value) => {
 };
 
 const fetchRoutesData = async (points, options = {}, timeoutMs = 9000) => {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch("/api/routes", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        points,
-        optimizeWaypoints: Boolean(options?.optimizeWaypoints),
-      }),
-      signal: controller.signal,
-    });
-    const data = await response.json().catch(() => ({}));
-    return { ok: response.ok, data };
-  } catch (error) {
+  void options;
+  void timeoutMs;
+
+  if (!Array.isArray(points) || points.length < 2) {
     return { ok: false, data: {} };
-  } finally {
-    clearTimeout(timeoutId);
   }
+
+  const normalized = points.map((point) => {
+    const lat = Number(point?.lat);
+    const lng = Number(point?.lng);
+    return {
+      lat,
+      lng,
+      valid: Number.isFinite(lat) && Number.isFinite(lng),
+    };
+  });
+
+  if (normalized.some((point) => !point.valid)) {
+    return { ok: false, data: {} };
+  }
+
+  const legs = [];
+  let distanceMetersTotal = 0;
+
+  for (let index = 0; index < normalized.length - 1; index += 1) {
+    const segmentDistance = distanceMetersBetween(normalized[index], normalized[index + 1]);
+    const safeDistance =
+      typeof segmentDistance === "number" && Number.isFinite(segmentDistance)
+        ? Math.max(0, segmentDistance)
+        : 0;
+    distanceMetersTotal += safeDistance;
+    const durationSeconds = Math.max(
+      1,
+      Math.round(((safeDistance / 1000) / ETA_ESTIMATED_SPEED_KMH) * 3600)
+    );
+    legs.push({
+      distanceMeters: Math.round(safeDistance),
+      duration: `${durationSeconds}s`,
+    });
+  }
+
+  const totalDurationSeconds = Math.max(
+    1,
+    Math.round(((distanceMetersTotal / 1000) / ETA_ESTIMATED_SPEED_KMH) * 3600)
+  );
+
+  return {
+    ok: true,
+    data: {
+      distanceMeters: Math.round(distanceMetersTotal),
+      duration: `${totalDurationSeconds}s`,
+      legs,
+      optimizedIntermediateWaypointIndex: [],
+      source: "local_estimate",
+    },
+  };
 };
 
 const sumLegs = (legs, startIndex, endIndexInclusive) => {
@@ -1005,7 +1044,7 @@ export default function RecorridoPage() {
       }
 
       const now = Date.now();
-      if (now - lastFetchRef.current < 20000) return;
+      if (now - lastFetchRef.current < ETA_REFRESH_INTERVAL_MS) return;
       lastFetchRef.current = now;
 
       const resolvedStops = (
