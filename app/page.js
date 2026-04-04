@@ -267,6 +267,7 @@ function HomeContent() {
   const focusCounterRef = useRef(0);
   const localMonitorFixRef = useRef({ coords: null, updatedAt: 0, accuracy: null });
   const monitorOfflineAlertRef = useRef("");
+  const monitorConnectionStateRef = useRef({ initialized: false, disconnected: false });
 
   const profile = session.profile;
   const profileRouteSignature = profile
@@ -1553,17 +1554,41 @@ function HomeContent() {
     session.uid,
   ]);
 
+  useEffect(() => {
+    if (isProfileMonitor) {
+      monitorConnectionStateRef.current = { initialized: false, disconnected: false };
+      return;
+    }
+
+    const previousState = monitorConnectionStateRef.current;
+    if (!previousState.initialized) {
+      monitorConnectionStateRef.current = {
+        initialized: true,
+        disconnected: monitorDisconnected,
+      };
+      return;
+    }
+
+    if (previousState.disconnected && !monitorDisconnected && busCoords) {
+      window.dispatchEvent(
+        new CustomEvent("schoolways:push-foreground", {
+          detail: {
+            title: "SchoolWays",
+            body: "La monitora volvió a conectarse. Ubicación actualizada.",
+          },
+        })
+      );
+    }
+
+    monitorConnectionStateRef.current = {
+      initialized: true,
+      disconnected: monitorDisconnected,
+    };
+  }, [busCoords, isProfileMonitor, monitorDisconnected]);
+
   return (
     <main className="map-page">
       <AuthPanel onUserActionsChange={handleAuthActionsChange} />
-      {profile && !isProfileMonitor && monitorDisconnected ? (
-        <div className="map-connection-alert" role="alert" aria-live="assertive">
-          <div className="map-connection-alert-title">Monitora desconectada</div>
-          <div className="map-connection-alert-body">
-            No estamos recibiendo ubicación nueva del bus. Última señal: {lastUpdateLabel}.
-          </div>
-        </div>
-      ) : null}
       {markersLoading ? (
         <div className="map-loading-overlay" role="status" aria-live="polite">
           <div className="map-loading-card">

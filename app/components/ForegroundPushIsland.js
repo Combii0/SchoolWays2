@@ -5,13 +5,16 @@ import { onAuthStateChanged } from "firebase/auth";
 import { doc, onSnapshot } from "firebase/firestore";
 import { auth, db } from "../lib/firebaseClient";
 
-const HIDE_DELAY_MS = 5200;
+const HIDE_DELAY_MS = 5000;
+const EXIT_ANIMATION_MS = 240;
 
 export default function ForegroundPushIsland() {
   const [visible, setVisible] = useState(false);
+  const [closing, setClosing] = useState(false);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const hideTimerRef = useRef(null);
+  const closeTimerRef = useRef(null);
   const lastNotificationIdRef = useRef("");
 
   const showToast = (payload = {}) => {
@@ -26,6 +29,7 @@ export default function ForegroundPushIsland() {
 
     setTitle(nextTitle);
     setBody(nextBody);
+    setClosing(false);
     setVisible(true);
     if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
       navigator.vibrate([220, 120, 220]);
@@ -33,10 +37,27 @@ export default function ForegroundPushIsland() {
   };
 
   useEffect(() => {
-    const clearTimer = () => {
-      if (!hideTimerRef.current) return;
-      clearTimeout(hideTimerRef.current);
-      hideTimerRef.current = null;
+    const clearTimers = () => {
+      if (hideTimerRef.current) {
+        clearTimeout(hideTimerRef.current);
+        hideTimerRef.current = null;
+      }
+      if (closeTimerRef.current) {
+        clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
+    };
+
+    const queueHide = () => {
+      clearTimers();
+      hideTimerRef.current = setTimeout(() => {
+        setClosing(true);
+        closeTimerRef.current = setTimeout(() => {
+          setVisible(false);
+          setClosing(false);
+          closeTimerRef.current = null;
+        }, EXIT_ANIMATION_MS);
+      }, HIDE_DELAY_MS);
     };
 
     const handleForegroundPushEvent = (event) => {
@@ -44,16 +65,13 @@ export default function ForegroundPushIsland() {
         title: event?.detail?.title,
         body: event?.detail?.body,
       });
-      clearTimer();
-      hideTimerRef.current = setTimeout(() => {
-        setVisible(false);
-      }, HIDE_DELAY_MS);
+      queueHide();
     };
 
     window.addEventListener("schoolways:push-foreground", handleForegroundPushEvent);
 
     return () => {
-      clearTimer();
+      clearTimers();
       window.removeEventListener(
         "schoolways:push-foreground",
         handleForegroundPushEvent
@@ -105,8 +123,16 @@ export default function ForegroundPushIsland() {
           if (hideTimerRef.current) {
             clearTimeout(hideTimerRef.current);
           }
+          if (closeTimerRef.current) {
+            clearTimeout(closeTimerRef.current);
+          }
           hideTimerRef.current = setTimeout(() => {
-            setVisible(false);
+            setClosing(true);
+            closeTimerRef.current = setTimeout(() => {
+              setVisible(false);
+              setClosing(false);
+              closeTimerRef.current = null;
+            }, EXIT_ANIMATION_MS);
           }, HIDE_DELAY_MS);
         },
         () => null
@@ -124,7 +150,11 @@ export default function ForegroundPushIsland() {
   if (!visible) return null;
 
   return (
-    <div className="push-island" role="status" aria-live="polite">
+    <div
+      className={closing ? "push-island closing" : "push-island"}
+      role="status"
+      aria-live="polite"
+    >
       <div className="push-island-icon" aria-hidden="true">
         <svg
           width="16"
@@ -156,7 +186,21 @@ export default function ForegroundPushIsland() {
       <button
         type="button"
         className="push-island-close"
-        onClick={() => setVisible(false)}
+        onClick={() => {
+          setClosing(true);
+          if (hideTimerRef.current) {
+            clearTimeout(hideTimerRef.current);
+            hideTimerRef.current = null;
+          }
+          if (closeTimerRef.current) {
+            clearTimeout(closeTimerRef.current);
+          }
+          closeTimerRef.current = setTimeout(() => {
+            setVisible(false);
+            setClosing(false);
+            closeTimerRef.current = null;
+          }, EXIT_ANIMATION_MS);
+        }}
         aria-label="Cerrar notificacion"
       >
         ×
