@@ -4,7 +4,16 @@ import dynamic from "next/dynamic";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { onAuthStateChanged } from "firebase/auth";
-import { collection, doc, getDoc, onSnapshot, query, setDoc, where } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  onSnapshot,
+  query,
+  setDoc,
+  where,
+} from "firebase/firestore";
 import AuthPanel from "./components/AuthPanel";
 import {
   LOCATION_ENABLED_STORAGE_KEY,
@@ -43,6 +52,10 @@ const ZOOM_NEAR = 16;
 const ZOOM_STOP = 17;
 const SHOW_SCHOOL_MARKER = false;
 const MAX_LIVE_BUS_AGE_MS = 25000;
+const MAX_LAST_KNOWN_BUS_AGE_MS = 10 * 60 * 1000;
+const STUDENT_REFRESH_INTERVAL_MS = 5000;
+const ROUTE_LOADING_OVERLAY_DELAY_MS = 150;
+const ROUTE_LOADING_OVERLAY_MAX_MS = 2000;
 const LOCAL_MONITOR_MAX_ACCURACY_METERS = 120;
 const LOCAL_MONITOR_ACCURACY_DEGRADATION_METERS = 18;
 const LOCAL_MONITOR_NOISY_JUMP_METERS = 160;
@@ -245,6 +258,7 @@ function HomeContent() {
   const [localMonitorCoords, setLocalMonitorCoords] = useState(null);
   const [localMonitorUpdatedAt, setLocalMonitorUpdatedAt] = useState(null);
   const [liveBusNowMs, setLiveBusNowMs] = useState(() => Date.now());
+  const [markersLoadingVisible, setMarkersLoadingVisible] = useState(false);
   const [islandExpanded, setIslandExpanded] = useState(false);
   const [authActions, setAuthActions] = useState(EMPTY_AUTH_ACTIONS);
   const [pulse, setPulse] = useState(false);
@@ -269,6 +283,17 @@ function HomeContent() {
     : "";
 
   const isProfileMonitor = isMonitorProfile(profile);
+  const routeLookupProfile = useMemo(
+    () =>
+      profile
+        ? {
+            route: profile?.route || null,
+            institutionCode: profile?.institutionCode || null,
+            institutionName: profile?.institutionName || null,
+          }
+        : null,
+    [profile]
+  );
   const activeRouteRequestKey = useMemo(
     () =>
       [toText(profile?.institutionCode), getRouteId(profile?.route) || toText(profile?.route)]
@@ -432,6 +457,7 @@ function HomeContent() {
       setResolvedStopCoords({});
       setResolvedSchoolCoords(null);
       setInstitutionSnapshot({ name: "", address: "", coords: null });
+      setMarkersLoadingVisible(false);
       setRouteSnapshot({
         requestKey: "",
         data: null,
@@ -545,21 +571,23 @@ function HomeContent() {
   useEffect(() => {
     let cancelled = false;
     let unsubscribeMeta = null;
-    let loadingTimerId = null;
+    let startLoadingTimerId = null;
+    if (!routeLookupProfile || !activeRouteRequestKey) return () => null;
 
-    if (!profile || !activeRouteRequestKey) return () => null;
-
-    loadingTimerId = window.setTimeout(() => {
-      setRouteSnapshot({
-        requestKey: activeRouteRequestKey,
-        data: null,
-        meta: null,
-        error: "",
-        loading: true,
+    startLoadingTimerId = window.setTimeout(() => {
+      setRouteSnapshot((current) => {
+        const isSameRequest = current.requestKey === activeRouteRequestKey;
+        return {
+          requestKey: activeRouteRequestKey,
+          data: isSameRequest ? current.data : null,
+          meta: isSameRequest ? current.meta : null,
+          error: "",
+          loading: true,
+        };
       });
     }, 0);
 
-    void loadRouteStopsForProfile(db, profile)
+    void loadRouteStopsForProfile(db, routeLookupProfile)
       .then((loadedRoute) => {
         if (cancelled) return;
         if (!loadedRoute) {
@@ -625,12 +653,54 @@ function HomeContent() {
 
     return () => {
       cancelled = true;
-      if (loadingTimerId) {
-        window.clearTimeout(loadingTimerId);
+      if (startLoadingTimerId) {
+        window.clearTimeout(startLoadingTimerId);
       }
       if (unsubscribeMeta) unsubscribeMeta();
     };
-  }, [activeRouteRequestKey, profile]);
+  }, [activeRouteRequestKey, routeLookupProfile]);
+
+  useEffect(() => {
+    if (!session.uid || !activeRouteRequestKey) {
+      const resetTimerId = window.setTimeout(() => {
+        setMarkersLoadingVisible(false);
+      }, 0);
+      return () => {
+        window.clearTimeout(resetTimerId);
+      };
+    }
+
+    let visible = true;
+    const showTimerId = window.setTimeout(() => {
+      if (visible) {
+        setMarkersLoadingVisible(true);
+      }
+    }, ROUTE_LOADING_OVERLAY_DELAY_MS);
+    const hideTimerId = window.setTimeout(() => {
+      if (visible) {
+        setMarkersLoadingVisible(false);
+      }
+    }, ROUTE_LOADING_OVERLAY_MAX_MS);
+
+    return () => {
+      visible = false;
+      window.clearTimeout(showTimerId);
+      window.clearTimeout(hideTimerId);
+    };
+  }, [activeRouteRequestKey, session.uid]);
+
+  useEffect(() => {
+    if (routeSnapshot.loading && !routeSnapshot.data?.stops?.length && !routeSnapshot.error) {
+      return () => null;
+    }
+
+    const hideTimerId = window.setTimeout(() => {
+      setMarkersLoadingVisible(false);
+    }, 0);
+    return () => {
+      window.clearTimeout(hideTimerId);
+    };
+  }, [routeSnapshot.data?.stops?.length, routeSnapshot.error, routeSnapshot.loading]);
 
   useEffect(() => {
     if (!profile?.institutionCode) return () => null;
@@ -729,6 +799,97 @@ function HomeContent() {
   }, [routeCandidateIds]);
 
   useEffect(() => {
+    if (isProfileMonitor || !routeCandidateIds.length) return () => null;
+
+    let cancelled = false;
+    const dateKey = getServiceDateKey();
+    const refreshStudentRouteState = async () => {
+      const liveTargets = routeCandidateIds.flatMap((candidateId) =>
+        ROUTE_LIVE_COLLECTIONS.map((rootCollection) => ({
+          sourceKey: `${rootCollection}:${candidateId}`,
+          ref: doc(db, rootCollection, candidateId, "live", "current"),
+        }))
+      );
+
+      const liveResults = await Promise.allSettled(
+        liveTargets.map(async (target) => {
+          const snapshot = await getDoc(target.ref);
+          return {
+            sourceKey: target.sourceKey,
+            snapshot,
+          };
+        })
+      );
+      if (cancelled) return;
+
+      setLiveBusSources((current) => {
+        const next = { ...current };
+        liveTargets.forEach((target) => {
+          delete next[target.sourceKey];
+        });
+        liveResults.forEach((result) => {
+          if (result.status !== "fulfilled") return;
+          const { sourceKey, snapshot } = result.value;
+          if (!snapshot.exists()) return;
+          const data = snapshot.data() || {};
+          const coords = extractCoords(data);
+          if (!coords) return;
+          next[sourceKey] = {
+            coords,
+            updatedAt: Math.max(
+              toMillis(data?.updatedAt),
+              parseCoord(data?.updatedAtClientMs) || 0,
+              parseCoord(data?.updatedAtMs) || 0
+            ),
+            accuracy: parseCoord(data?.accuracy),
+          };
+        });
+        return next;
+      });
+
+      const statusTargets = routeCandidateIds.flatMap((candidateId) =>
+        ROUTE_DAILY_COLLECTIONS.map((rootCollection) => ({
+          subKey: `${rootCollection}:${candidateId}:${dateKey}`,
+          ref: collection(db, rootCollection, candidateId, "daily", dateKey, "stops"),
+        }))
+      );
+
+      const statusResults = await Promise.allSettled(
+        statusTargets.map(async (target) => {
+          const snapshot = await getDocs(target.ref);
+          return {
+            subKey: target.subKey,
+            docs: snapshot.docs,
+          };
+        })
+      );
+      if (cancelled) return;
+
+      setStatusMaps((current) => {
+        const next = { ...current };
+        statusTargets.forEach((target) => {
+          next[target.subKey] = {};
+        });
+        statusResults.forEach((result) => {
+          if (result.status !== "fulfilled") return;
+          next[result.value.subKey] = createStopStatusMap(result.value.docs);
+        });
+        return next;
+      });
+    };
+
+    void refreshStudentRouteState();
+    const intervalId = window.setInterval(() => {
+      void refreshStudentRouteState();
+    }, STUDENT_REFRESH_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [isProfileMonitor, routeCandidateIds]);
+
+  useEffect(() => {
     if (!routeCandidateIds.length) return () => null;
 
     const dateKey = getServiceDateKey();
@@ -796,19 +957,54 @@ function HomeContent() {
     return entries[0] || null;
   }, [liveBusNowMs, liveBusSources, routeCandidateIds]);
 
+  const lastKnownLiveBusSnapshot = useMemo(() => {
+    const freshnessThreshold = liveBusNowMs - MAX_LAST_KNOWN_BUS_AGE_MS;
+    const entries = Object.entries(liveBusSources)
+      .filter(([sourceKey]) => {
+        const candidateId = sourceKey.split(":")[1];
+        return !routeCandidateIds.length || routeCandidateIds.includes(candidateId);
+      })
+      .map(([, value]) => value)
+      .filter((value) => value && Number(value.updatedAt || 0) >= freshnessThreshold)
+      .sort((left, right) => {
+        const timeDiff = (right.updatedAt || 0) - (left.updatedAt || 0);
+        if (timeDiff !== 0) return timeDiff;
+        const leftAccuracy = Number.isFinite(left?.accuracy)
+          ? Number(left.accuracy)
+          : Number.POSITIVE_INFINITY;
+        const rightAccuracy = Number.isFinite(right?.accuracy)
+          ? Number(right.accuracy)
+          : Number.POSITIVE_INFINITY;
+        return leftAccuracy - rightAccuracy;
+      });
+    return entries[0] || null;
+  }, [liveBusNowMs, liveBusSources, routeCandidateIds]);
+
   const busCoords = useMemo(() => {
     if (isProfileMonitor && locationEnabled && localMonitorCoords) {
       return localMonitorCoords;
     }
-    return liveBusSnapshot?.coords || null;
-  }, [isProfileMonitor, liveBusSnapshot?.coords, localMonitorCoords, locationEnabled]);
+    return liveBusSnapshot?.coords || lastKnownLiveBusSnapshot?.coords || null;
+  }, [
+    isProfileMonitor,
+    lastKnownLiveBusSnapshot?.coords,
+    liveBusSnapshot?.coords,
+    localMonitorCoords,
+    locationEnabled,
+  ]);
 
   const lastLocationUpdatedAt = useMemo(() => {
     if (isProfileMonitor && locationEnabled && localMonitorUpdatedAt) {
       return localMonitorUpdatedAt;
     }
-    return liveBusSnapshot?.updatedAt || null;
-  }, [isProfileMonitor, liveBusSnapshot?.updatedAt, localMonitorUpdatedAt, locationEnabled]);
+    return liveBusSnapshot?.updatedAt || lastKnownLiveBusSnapshot?.updatedAt || null;
+  }, [
+    isProfileMonitor,
+    lastKnownLiveBusSnapshot?.updatedAt,
+    liveBusSnapshot?.updatedAt,
+    localMonitorUpdatedAt,
+    locationEnabled,
+  ]);
 
   const rawStops = useMemo(
     () => (Array.isArray(routeSnapshot.data?.stops) ? routeSnapshot.data.stops : []),
@@ -1156,7 +1352,10 @@ function HomeContent() {
   const canRunLogout = typeof authActions?.logout === "function";
 
   const markersLoading =
-    Boolean(profile) && routeSnapshot.loading && !routeSnapshot.data?.stops?.length;
+    markersLoadingVisible &&
+    Boolean(profile) &&
+    routeSnapshot.loading &&
+    !routeSnapshot.data?.stops?.length;
 
   const selectedStop = useMemo(() => {
     const targetStop = toText(searchParams?.get("stop"));

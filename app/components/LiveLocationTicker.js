@@ -6,7 +6,7 @@ import { doc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
 import { auth, db } from "../lib/firebaseClient";
 import { isMonitorProfile } from "../lib/profileRoles";
 
-const SEND_INTERVAL_MS = 4000;
+const SEND_INTERVAL_MS = 5000;
 const LOCATION_LOG_TAG = `global-${Math.round(SEND_INTERVAL_MS / 1000)}s`;
 const ROUTE_LIVE_COLLECTIONS = ["routes", "rutas"];
 export const LOCATION_TICK_EVENT = "schoolways:location-tick";
@@ -24,7 +24,7 @@ const GEOLOCATION_FALLBACK_OPTIONS = {
 };
 const HIGH_ACCURACY_MAX_METERS = 80;
 const NO_FIX_RELAX_AFTER_MS = 12000;
-const NO_FIX_RELAX_ACCURACY_METERS = 125;
+const NO_FIX_RELAX_ACCURACY_METERS = 140;
 const TARGET_ACCURACY_METERS = 45;
 const BEST_EFFORT_ACCURACY_METERS = 115;
 const HARD_REJECT_ACCURACY_METERS = 220;
@@ -370,7 +370,7 @@ export default function LiveLocationTicker() {
         (error) => {
           const code = Number(error?.code);
           const message = toText(error?.message) || "unknown";
-          if (code === 3) {
+          if (code === 2 || code === 3) {
             // Timeout is common on some devices; fallback to a quick cached fix.
             navigator.geolocation.getCurrentPosition(
               handlePosition,
@@ -411,12 +411,24 @@ export default function LiveLocationTicker() {
       );
     };
 
+    const recoverFreshFix = (reason = "recovery") => {
+      if (cancelled) return;
+      const preferred = pickBestFixForNow();
+      const shouldWrite =
+        preferred && (lastSentAtMs === 0 || Date.now() - lastSentAtMs >= SEND_INTERVAL_MS - 250);
+      if (preferred && shouldWrite) {
+        void writeFix(preferred, `${reason}-cached`);
+      }
+      requestSingleFix(reason);
+    };
+
     watchId = navigator.geolocation.watchPosition(
       (position) => {
         handleWatchPosition(position, "watch");
       },
       (error) => {
         handleWatchError(error, "watch");
+        recoverFreshFix("watch-recovery");
       },
       GEOLOCATION_OPTIONS
     );
@@ -438,12 +450,20 @@ export default function LiveLocationTicker() {
     const handleVisibilityChange = () => {
       if (typeof document === "undefined") return;
       if (!document.hidden) {
-        requestSingleFix("foreground");
+        recoverFreshFix("foreground");
       }
+    };
+    const handleOnline = () => {
+      recoverFreshFix("online");
+    };
+    const handleFocus = () => {
+      recoverFreshFix("focus");
     };
     if (typeof document !== "undefined") {
       document.addEventListener("visibilitychange", handleVisibilityChange);
     }
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("focus", handleFocus);
 
     return () => {
       cancelled = true;
@@ -454,6 +474,8 @@ export default function LiveLocationTicker() {
       if (typeof document !== "undefined") {
         document.removeEventListener("visibilitychange", handleVisibilityChange);
       }
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("focus", handleFocus);
     };
   }, [locationEnabled, session.uid, session.profile]);
 
