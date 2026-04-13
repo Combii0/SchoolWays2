@@ -26,16 +26,26 @@ const buildHtmlIcon = ({ html, iconSize, iconAnchor }) =>
 
 const buildBusIcon = () =>
   buildHtmlIcon({
-    html: `<div class="leaflet-bus-marker"></div>`,
-    iconSize: [64, 64],
-    iconAnchor: [32, 32],
+    html: `
+      <div class="leaflet-bus-marker">
+        <span class="leaflet-bus-marker__pulse"></span>
+        <span class="leaflet-bus-marker__ring"></span>
+        <span class="leaflet-bus-marker__core"></span>
+      </div>
+    `,
+    iconSize: [88, 88],
+    iconAnchor: [44, 44],
   });
 
 const buildSchoolIcon = () =>
   buildHtmlIcon({
-    html: `<div class="leaflet-school-marker"></div>`,
-    iconSize: [26, 26],
-    iconAnchor: [13, 13],
+    html: `
+      <div class="leaflet-school-marker">
+        <span class="leaflet-school-marker__core"></span>
+      </div>
+    `,
+    iconSize: [34, 34],
+    iconAnchor: [17, 17],
   });
 
 const buildStopIcon = (stop, selectedStopId) => {
@@ -206,7 +216,7 @@ export default function LeafletRouteMap({
       <TileLayer
         url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
         attribution="&copy; OpenStreetMap contributors"
-        className="map-tile-layer-light"
+        className="map-tile-layer-atlas"
       />
       <MapSizeController />
       <ViewportController
@@ -219,16 +229,38 @@ export default function LeafletRouteMap({
       />
 
       {trailTuples.length > 1 ? (
-        <Polyline
-          positions={trailTuples}
-          pathOptions={{
-            color: "#22d2c5",
-            weight: 7,
-            opacity: 0.94,
-            lineCap: "round",
-            lineJoin: "round",
-          }}
-        />
+        <>
+          <Polyline
+            positions={trailTuples}
+            pathOptions={{
+              color: "#0f766e",
+              weight: 16,
+              opacity: 0.16,
+              lineCap: "round",
+              lineJoin: "round",
+            }}
+          />
+          <Polyline
+            positions={trailTuples}
+            pathOptions={{
+              color: "#14b8a6",
+              weight: 8,
+              opacity: 0.96,
+              lineCap: "round",
+              lineJoin: "round",
+            }}
+          />
+          <Polyline
+            positions={trailTuples}
+            pathOptions={{
+              color: "#ecfeff",
+              weight: 3,
+              opacity: 0.92,
+              lineCap: "round",
+              lineJoin: "round",
+            }}
+          />
+        </>
       ) : null}
 
       {schoolTuple ? (
@@ -257,7 +289,7 @@ export default function LeafletRouteMap({
 
       {busTuple ? (
         <Marker position={busTuple} icon={buildBusIcon()}>
-          <Tooltip direction="top" offset={[0, -36]}>
+          <Tooltip direction="top" offset={[0, -44]}>
             <div className="leaflet-stop-tooltip">
               <strong>Bus escolar</strong>
             </div>
