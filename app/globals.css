@@ -151,19 +151,12 @@ a {
   position: relative;
   width: 56px;
   height: 56px;
-  display: grid;
-  place-items: center;
-}
-
-.leaflet-bus-marker__image {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  display: block;
+  background: url("/icons/bus.png") center / contain no-repeat;
   filter: drop-shadow(0 8px 14px rgba(61, 110, 181, 0.16));
+  transform: translateZ(0);
 }
 
-.leaflet-bus-marker.is-stale .leaflet-bus-marker__image {
+.leaflet-bus-marker.is-stale {
   filter: saturate(0.78);
   opacity: 0.84;
 }

@@ -37,11 +37,7 @@ const buildHtmlIcon = ({ html, iconSize, iconAnchor }) =>
 
 const buildBusIcon = (isStale = false) =>
   buildHtmlIcon({
-    html: `
-      <div class="leaflet-bus-marker${isStale ? " is-stale" : ""}">
-        <img class="leaflet-bus-marker__image" src="/icons/bus.png" alt="" />
-      </div>
-    `,
+    html: `<div class="leaflet-bus-marker${isStale ? " is-stale" : ""}" aria-hidden="true"></div>`,
     iconSize: [56, 56],
     iconAnchor: [28, 28],
   });
@@ -111,12 +107,14 @@ function ViewportController({
   const lastViewportKeyRef = useRef("");
   const lastFocusKeyRef = useRef("");
   const initialViewportDoneRef = useRef(false);
+  const priorityFocusAppliedRef = useRef(false);
 
   useEffect(() => {
     const nextKey = viewportKey || "__default__";
     if (lastViewportKeyRef.current === nextKey) return;
     lastViewportKeyRef.current = nextKey;
     initialViewportDoneRef.current = false;
+    priorityFocusAppliedRef.current = false;
     lastFocusKeyRef.current = "";
   }, [viewportKey]);
 
@@ -131,16 +129,18 @@ function ViewportController({
   }, [focusRequest, map]);
 
   useEffect(() => {
-    if (initialViewportDoneRef.current) return;
-
     const priorityTarget = toTuple(initialFocusCoords);
-    if (priorityTarget) {
-      initialViewportDoneRef.current = true;
-      setViewWithinSafeArea(map, priorityTarget, initialFocusZoom || DEFAULT_ZOOM, {
-        animate: false,
-      });
-      return;
-    }
+    if (!priorityTarget || priorityFocusAppliedRef.current) return;
+    const shouldAnimate = initialViewportDoneRef.current;
+    priorityFocusAppliedRef.current = true;
+    initialViewportDoneRef.current = true;
+    setViewWithinSafeArea(map, priorityTarget, initialFocusZoom || DEFAULT_ZOOM, {
+      animate: shouldAnimate,
+    });
+  }, [initialFocusCoords, initialFocusZoom, map]);
+
+  useEffect(() => {
+    if (initialViewportDoneRef.current) return;
 
     if (initialFocusPending || !fallbackPoints.length) return;
     initialViewportDoneRef.current = true;
@@ -230,12 +230,13 @@ export default function LeafletRouteMap({
   );
   const routeTuples = useMemo(() => stopMarkers.map((stop) => stop.tuple), [stopMarkers]);
   const fallbackPoints = useMemo(() => {
-    const points = [...routeTuples];
+    const points = [];
+    if (busTuple) {
+      points.push(busTuple);
+    }
+    points.push(...routeTuples);
     if (schoolTuple) {
       points.push(schoolTuple);
-    }
-    if (!points.length && busTuple) {
-      points.push(busTuple);
     }
     return points;
   }, [busTuple, routeTuples, schoolTuple]);
