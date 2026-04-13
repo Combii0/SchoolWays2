@@ -7,11 +7,11 @@ import { MapContainer, Marker, Polyline, TileLayer, Tooltip, useMap } from "reac
 const DEFAULT_CENTER = [4.711, -74.0721];
 const DEFAULT_ZOOM = 13;
 const MAX_FIT_ZOOM = 17;
-const MINIMAL_TILE_URL =
-  "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}";
-const MINIMAL_TILE_ATTRIBUTION = "&copy; Esri";
-const MINIMAL_REFERENCE_TILE_URL =
-  "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}";
+const MAP_TILE_URL =
+  "https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png";
+const MAP_LABELS_TILE_URL =
+  "https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png";
+const MAP_TILE_ATTRIBUTION = "&copy; OpenStreetMap contributors &copy; CARTO";
 
 const toTuple = (coords) => {
   if (!coords) return null;
@@ -33,13 +33,11 @@ const buildBusIcon = (isStale = false) =>
   buildHtmlIcon({
     html: `
       <div class="leaflet-bus-marker${isStale ? " is-stale" : ""}">
-        <span class="leaflet-bus-marker__pulse"></span>
-        <span class="leaflet-bus-marker__ring"></span>
-        <span class="leaflet-bus-marker__core"></span>
+        <img class="leaflet-bus-marker__image" src="/icons/bus.png" alt="" />
       </div>
     `,
-    iconSize: [74, 74],
-    iconAnchor: [37, 37],
+    iconSize: [72, 72],
+    iconAnchor: [36, 36],
   });
 
 const buildSchoolIcon = () =>
@@ -220,16 +218,18 @@ export default function LeafletRouteMap({
       style={{ height: "100%", width: "100%" }}
     >
       <TileLayer
-        url={MINIMAL_TILE_URL}
-        attribution={MINIMAL_TILE_ATTRIBUTION}
+        url={MAP_TILE_URL}
+        subdomains="abcd"
+        attribution={MAP_TILE_ATTRIBUTION}
         className="map-tile-layer-base"
       />
       <TileLayer
-        url={MINIMAL_REFERENCE_TILE_URL}
+        url={MAP_LABELS_TILE_URL}
+        subdomains="abcd"
         attribution=""
         className="map-tile-layer-reference"
         zIndex={250}
-        opacity={0.72}
+        opacity={0.76}
       />
       <MapSizeController />
       <ViewportController
