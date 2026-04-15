@@ -6,7 +6,7 @@ import { doc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
 import { auth, db } from "../lib/firebaseClient";
 import { isMonitorProfile } from "../lib/profileRoles";
 
-const SEND_INTERVAL_MS = 5000;
+const SEND_INTERVAL_MS = 3000;
 const LOCATION_LOG_TAG = `global-${Math.round(SEND_INTERVAL_MS / 1000)}s`;
 const ROUTE_LIVE_WRITE_COLLECTIONS = ["routes"];
 export const LOCATION_TICK_EVENT = "schoolways:location-tick";
@@ -44,6 +44,12 @@ const MOVING_CLUSTER_RADIUS_METERS = 24;
 const MOVING_SPEED_THRESHOLD_MPS = 2.2;
 const MIN_MOVEMENT_DISTANCE_METERS = 18;
 const MAX_PLAUSIBLE_SPEED_MPS = 32;
+const RAW_FIX_PRIORITY_ACCURACY_METERS = 18;
+const MOVING_RAW_FIX_MAX_ACCURACY_METERS = 32;
+const IMMEDIATE_SEND_MIN_GAP_MS = 1200;
+const IMMEDIATE_SEND_MOVE_METERS = 8;
+const IMMEDIATE_SEND_MOVING_METERS = 14;
+const IMMEDIATE_SEND_ACCURACY_GAIN_METERS = 8;
 
 const toText = (value) => {
   if (value === null || value === undefined) return "";
@@ -109,6 +115,14 @@ const movementMetricsBetween = (from, to) => {
     deltaMs,
     inferredSpeed,
   };
+};
+
+const isBetterAccuracy = (candidate, reference, deltaMeters = 0) => {
+  const candidateAccuracy = Number(candidate);
+  const referenceAccuracy = Number(reference);
+  if (!Number.isFinite(candidateAccuracy)) return false;
+  if (!Number.isFinite(referenceAccuracy)) return true;
+  return candidateAccuracy + deltaMeters < referenceAccuracy;
 };
 
 const hasRecentMotion = (samples = [], primaryFix = null, secondaryFix = null) => {
@@ -214,6 +228,7 @@ export default function LiveLocationTicker() {
     const startedAtMs = Date.now();
     let latestFix = null;
     let stableFix = null;
+    let lastSentFix = null;
     let lastSentAtMs = 0;
     let lastAcceptedFixAtMs = 0;
     let lastWarnAtMs = 0;
@@ -433,8 +448,39 @@ export default function LiveLocationTicker() {
 
     const pickBestFixForNow = () => {
       const isMoving = hasRecentMotion(recentFixes, latestFix, stableFix);
+      const latestAccuracy = fixAccuracy(latestFix);
+      if (latestFix) {
+        if (latestAccuracy <= RAW_FIX_PRIORITY_ACCURACY_METERS) {
+          return latestFix;
+        }
+        if (isMoving && latestAccuracy <= MOVING_RAW_FIX_MAX_ACCURACY_METERS) {
+          return latestFix;
+        }
+      }
+
       const preferred = pickRawFixForNow(isMoving);
-      return buildSmoothedFix(preferred, isMoving) || preferred;
+      const smoothed = buildSmoothedFix(preferred, isMoving) || preferred;
+      if (!smoothed) return latestFix;
+      if (!latestFix) return smoothed;
+
+      const smoothedAccuracy = fixAccuracy(smoothed);
+      const latestIsFresh =
+        Number.isFinite(latestFix.reportedAtMs) &&
+        Number.isFinite(smoothed.reportedAtMs) &&
+        latestFix.reportedAtMs >= smoothed.reportedAtMs;
+      if (latestIsFresh && isBetterAccuracy(latestAccuracy, smoothedAccuracy, isMoving ? 10 : 4)) {
+        return latestFix;
+      }
+      if (
+        isMoving &&
+        latestIsFresh &&
+        latestAccuracy <= BEST_EFFORT_ACCURACY_METERS &&
+        latestAccuracy <= smoothedAccuracy + 12
+      ) {
+        return latestFix;
+      }
+
+      return smoothed;
     };
 
     const captureFix = (position) => {
@@ -543,6 +589,10 @@ export default function LiveLocationTicker() {
           throw new Error("no-live-write-succeeded");
         }
         lastSentAtMs = sentAtMs;
+        lastSentFix = {
+          ...fix,
+          sentAtMs,
+        };
       } catch (error) {
         console.warn(
           `[SchoolWays GPS][${LOCATION_LOG_TAG}][${reason}] sentAt=${sentAt} reportedAt=${reportedAt} firestore-write-failed`
@@ -562,15 +612,42 @@ export default function LiveLocationTicker() {
       void flushQueuedWrite();
     };
 
+    const shouldSendImmediately = (fix) => {
+      if (!fix) return false;
+      const nowMs = Date.now();
+      if (!lastSentFix || lastSentAtMs === 0) return true;
+      if (nowMs - lastSentAtMs < IMMEDIATE_SEND_MIN_GAP_MS) return false;
+      if (nowMs - lastSentAtMs >= SEND_INTERVAL_MS - 250) return true;
+
+      const isMoving = hasRecentMotion(recentFixes, fix, lastSentFix);
+      const { distance, deltaMs } = movementMetricsBetween(lastSentFix, fix);
+      const movedEnough =
+        typeof distance === "number" &&
+        distance >= (isMoving ? IMMEDIATE_SEND_MOVING_METERS : IMMEDIATE_SEND_MOVE_METERS);
+      if (movedEnough) {
+        return true;
+      }
+
+      const sentAccuracy = fixAccuracy(lastSentFix);
+      const nextAccuracy = fixAccuracy(fix);
+      if (isBetterAccuracy(nextAccuracy, sentAccuracy, IMMEDIATE_SEND_ACCURACY_GAIN_METERS)) {
+        return true;
+      }
+
+      return (
+        Number.isFinite(deltaMs) &&
+        deltaMs >= SEND_INTERVAL_MS &&
+        nextAccuracy <= Math.min(BEST_EFFORT_ACCURACY_METERS, sentAccuracy + 12)
+      );
+    };
+
     const requestSingleFix = (reason = "single") => {
       const handlePosition = (position) => {
         if (cancelled) return;
         const fix = captureFix(position);
         if (!fix) return;
         const preferred = pickBestFixForNow() || fix;
-        const shouldWriteNow =
-          lastSentAtMs === 0 || Date.now() - lastSentAtMs >= SEND_INTERVAL_MS - 250;
-        if (preferred && shouldWriteNow) {
+        if (preferred && shouldSendImmediately(preferred)) {
           scheduleWrite(preferred, reason);
         }
       };
@@ -618,8 +695,8 @@ export default function LiveLocationTicker() {
       const fix = captureFix(position);
       if (!fix) return;
       const preferred = pickBestFixForNow() || fix;
-      if (preferred && lastSentAtMs === 0) {
-        scheduleWrite(preferred, `${reason}-first-fix`);
+      if (preferred && shouldSendImmediately(preferred)) {
+        scheduleWrite(preferred, lastSentAtMs === 0 ? `${reason}-first-fix` : `${reason}-live`);
       }
     };
 
@@ -641,9 +718,7 @@ export default function LiveLocationTicker() {
     const recoverFreshFix = (reason = "recovery") => {
       if (cancelled) return;
       const preferred = pickBestFixForNow();
-      const shouldWrite =
-        preferred && (lastSentAtMs === 0 || Date.now() - lastSentAtMs >= SEND_INTERVAL_MS - 250);
-      if (preferred && shouldWrite) {
+      if (preferred && shouldSendImmediately(preferred)) {
         scheduleWrite(preferred, `${reason}-cached`);
       }
       requestSingleFix(reason);

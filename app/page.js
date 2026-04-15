@@ -320,6 +320,7 @@ function HomeContent() {
   const [trailPoints, setTrailPoints] = useState([]);
   const [localMonitorCoords, setLocalMonitorCoords] = useState(null);
   const [localMonitorUpdatedAt, setLocalMonitorUpdatedAt] = useState(null);
+  const [localMonitorAccuracy, setLocalMonitorAccuracy] = useState(null);
   const [liveBusNowMs, setLiveBusNowMs] = useState(() => Date.now());
   const [markersLoadingVisible, setMarkersLoadingVisible] = useState(false);
   const [islandExpanded, setIslandExpanded] = useState(false);
@@ -449,6 +450,7 @@ function HomeContent() {
       };
       setLocalMonitorCoords(coords);
       setLocalMonitorUpdatedAt(updatedAt);
+      setLocalMonitorAccuracy(nextAccuracy);
 
       if (!trailEnabled) {
         return coords;
@@ -539,6 +541,7 @@ function HomeContent() {
       setTrailPoints([]);
       setLocalMonitorCoords(null);
       setLocalMonitorUpdatedAt(null);
+      setLocalMonitorAccuracy(null);
       localMonitorFixRef.current = { coords: null, updatedAt: 0, accuracy: null, speed: null };
       setResolvedStopCoords({});
       setResolvedSchoolCoords(null);
@@ -1027,16 +1030,41 @@ function HomeContent() {
     return liveBusSnapshot?.coords || recentLiveBusSnapshot?.coords || null;
   }, [isProfileMonitor, liveBusSnapshot?.coords, localMonitorCoords, locationEnabled, recentLiveBusSnapshot?.coords]);
 
+  const busAccuracy = useMemo(() => {
+    if (isProfileMonitor && locationEnabled && localMonitorCoords) {
+      return localMonitorAccuracy;
+    }
+    return liveBusSnapshot?.accuracy ?? recentLiveBusSnapshot?.accuracy ?? null;
+  }, [
+    isProfileMonitor,
+    liveBusSnapshot?.accuracy,
+    localMonitorAccuracy,
+    localMonitorCoords,
+    locationEnabled,
+    recentLiveBusSnapshot?.accuracy,
+  ]);
+
   const lastKnownBusCoords = useMemo(() => {
     if (busCoords) return busCoords;
     return lastKnownLiveBusSnapshot?.coords || null;
   }, [busCoords, lastKnownLiveBusSnapshot?.coords]);
+
+  const lastKnownBusAccuracy = useMemo(() => {
+    if (busCoords) return busAccuracy;
+    return lastKnownLiveBusSnapshot?.accuracy ?? null;
+  }, [busAccuracy, busCoords, lastKnownLiveBusSnapshot?.accuracy]);
 
   const mapBusCoords = useMemo(() => {
     if (busCoords) return busCoords;
     if (isProfileMonitor) return null;
     return lastKnownBusCoords;
   }, [busCoords, isProfileMonitor, lastKnownBusCoords]);
+
+  const mapBusAccuracy = useMemo(() => {
+    if (busCoords) return busAccuracy;
+    if (isProfileMonitor) return null;
+    return lastKnownBusAccuracy;
+  }, [busAccuracy, busCoords, isProfileMonitor, lastKnownBusAccuracy]);
 
   const mapBusStale = useMemo(() => {
     return !isProfileMonitor && !busCoords && Boolean(lastKnownBusCoords);
@@ -1553,6 +1581,7 @@ function HomeContent() {
       localMonitorFixRef.current = { coords: null, updatedAt: 0, accuracy: null, speed: null };
       setLocalMonitorCoords(null);
       setLocalMonitorUpdatedAt(null);
+      setLocalMonitorAccuracy(null);
     }
   }, [locationEnabled]);
 
@@ -1697,6 +1726,7 @@ function HomeContent() {
         {profile ? (
           <LeafletRouteMap
             busCoords={mapBusCoords}
+            busAccuracy={mapBusAccuracy}
             busStale={mapBusStale}
             schoolCoords={SHOW_SCHOOL_MARKER ? schoolCoords : null}
             stops={stops}

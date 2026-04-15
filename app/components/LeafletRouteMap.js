@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import L from "leaflet";
-import { MapContainer, Marker, Polyline, TileLayer, Tooltip, useMap } from "react-leaflet";
+import { Circle, MapContainer, Marker, Polyline, TileLayer, Tooltip, useMap } from "react-leaflet";
 
 const DEFAULT_CENTER = [4.711, -74.0721];
 const DEFAULT_ZOOM = 13;
@@ -201,6 +201,7 @@ function MapSizeController() {
 
 export default function LeafletRouteMap({
   busCoords = null,
+  busAccuracy = null,
   busStale = false,
   schoolCoords = null,
   stops = [],
@@ -213,6 +214,10 @@ export default function LeafletRouteMap({
   selectedStopId = "",
 }) {
   const busTuple = useMemo(() => toTuple(busCoords), [busCoords]);
+  const busAccuracyMeters = useMemo(() => {
+    const parsed = Number(busAccuracy);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }, [busAccuracy]);
   const schoolTuple = useMemo(() => toTuple(schoolCoords), [schoolCoords]);
   const stopMarkers = useMemo(
     () =>
@@ -340,14 +345,30 @@ export default function LeafletRouteMap({
       ))}
 
       {busTuple ? (
-        <Marker position={busTuple} icon={buildBusIcon(busStale)} zIndexOffset={560}>
-          <Tooltip direction="top" offset={[0, -34]}>
-            <div className="leaflet-stop-tooltip">
-              <strong>{busStale ? "Ultima ubicacion del bus" : "Bus escolar"}</strong>
-              {busStale ? <span>Mostrando el ultimo punto valido recibido.</span> : null}
-            </div>
-          </Tooltip>
-        </Marker>
+        <>
+          {busAccuracyMeters && busAccuracyMeters <= 250 ? (
+            <Circle
+              center={busTuple}
+              radius={busAccuracyMeters}
+              pathOptions={{
+                color: busStale ? "#6c7da8" : "#4c83dd",
+                weight: 1.5,
+                opacity: 0.34,
+                fillColor: busStale ? "#93a0bd" : "#7fb2ff",
+                fillOpacity: 0.14,
+              }}
+            />
+          ) : null}
+          <Marker position={busTuple} icon={buildBusIcon(busStale)} zIndexOffset={560}>
+            <Tooltip direction="top" offset={[0, -34]}>
+              <div className="leaflet-stop-tooltip">
+                <strong>{busStale ? "Ultima ubicacion del bus" : "Bus escolar"}</strong>
+                {busStale ? <span>Mostrando el ultimo punto valido recibido.</span> : null}
+                {busAccuracyMeters ? <span>Precision aprox. +/-{Math.round(busAccuracyMeters)} m</span> : null}
+              </div>
+            </Tooltip>
+          </Marker>
+        </>
       ) : null}
     </MapContainer>
   );
