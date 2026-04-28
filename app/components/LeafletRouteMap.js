@@ -46,11 +46,20 @@ const buildSchoolIcon = () =>
   buildHtmlIcon({
     html: `
       <div class="leaflet-school-marker">
-        <span class="leaflet-school-marker__core"></span>
+        <svg
+          class="leaflet-school-marker__icon"
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <path d="M3 10.5 12 5l9 5.5-9 5.5-9-5.5Z" />
+          <path d="M6.5 13.3v4.2c1.7 1.1 3.5 1.7 5.5 1.7s3.8-.6 5.5-1.7v-4.2" />
+          <path d="M20.5 11v5" />
+        </svg>
       </div>
     `,
-    iconSize: [28, 28],
-    iconAnchor: [14, 14],
+    iconSize: [44, 52],
+    iconAnchor: [22, 48],
   });
 
 const buildStopIcon = (stop, selectedStopId) => {
