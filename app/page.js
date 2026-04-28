@@ -1218,7 +1218,7 @@ function HomeContent() {
   );
 
   const stops = useMemo(() => {
-    return rawStops.map((stop, index) => {
+    const mappedStops = rawStops.map((stop, index) => {
       const stopId = toText(stop?.id) || `paradero-${index + 1}`;
       const coords = extractCoords(stop?.coords) || resolvedStopCoords[stopId] || null;
       const statusEntry = resolveStopStatusEntry(mergedStatusMap, {
@@ -1264,7 +1264,10 @@ function HomeContent() {
         isCurrent,
       };
     });
-  }, [assignedStopAddress, mergedStatusMap, rawStops, resolvedStopCoords]);
+
+    if (isProfileMonitor) return mappedStops;
+    return mappedStops.filter((stop) => stop.isCurrent);
+  }, [assignedStopAddress, isProfileMonitor, mergedStatusMap, rawStops, resolvedStopCoords]);
 
   const stopOrderByAddress = useMemo(() => {
     const mapped = new Map();

@@ -38,13 +38,13 @@ const app = getApps().length
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-const DEFAULT_PASSWORD = process.env.SEED_DEFAULT_PASSWORD || "SchoolWays2026!";
+const DEFAULT_PASSWORD = process.env.SEED_DEFAULT_PASSWORD || "12345678";
 const INSTITUTION = {
   code: "L1kj2HG3fd4SA5",
-  name: "SchoolWays Demo",
-  address: "Cafam La Floresta, Bogota, Colombia",
-  lat: 4.68633,
-  lng: -74.07406,
+  name: "Colegio En el Toke",
+  address: "Ak 50 #100-88, Bogota, Colombia",
+  lat: 4.6899,
+  lng: -74.0618,
 };
 
 const ROUTES = [
@@ -52,115 +52,19 @@ const ROUTES = [
     id: "ruta-1",
     name: "Ruta 1",
     driver: "Carlos Gomez",
-    monitor: "Andrea Rios",
+    monitor: "Isabel Cristina Nino",
     stops: [
       {
         id: "ruta-1-stop-01",
-        title: "Carrera 50a #122 - 90",
-        address: "Carrera 50a #122 - 90, Bogota, Colombia",
-        coords: { lat: 4.6617291, lng: -74.0783688 },
-      },
-      {
-        id: "ruta-1-stop-02",
-        title: "Cafam La Floresta",
-        address: "Cafam La Floresta, Bogota, Colombia",
-        coords: { lat: 4.68633, lng: -74.07406 },
-      },
-      {
-        id: "ruta-1-stop-03",
         title: "Calle 96 #45a 40",
-        address: "Calle 96 #45a 40, Bogota, Colombia",
+        address: "Ac 100 #47a, Bogota, Colombia",
         coords: { lat: 4.6851812, lng: -74.058837 },
       },
       {
-        id: "ruta-1-stop-04",
-        title: "Unicentro",
-        address: "Unicentro, Bogota, Colombia",
-        coords: { lat: 4.7022, lng: -74.0415 },
-      },
-    ],
-  },
-  {
-    id: "ruta-24",
-    name: "Ruta 24 - Suba Norte",
-    driver: "Carlos Gomez",
-    monitor: "Andrea Rios",
-    stops: [
-      {
-        id: "ruta-24-stop-01",
-        title: "Av. Suba #128-80",
-        address: "Av. Suba #128-80, Bogota, Colombia",
-        coords: { lat: 4.7492477, lng: -74.1011999 },
-      },
-      {
-        id: "ruta-24-stop-02",
-        title: "Cra. 72 #127-15",
-        address: "Cra. 72 #127-15, Bogota, Colombia",
-        coords: { lat: 4.7126058, lng: -74.0776467 },
-      },
-      {
-        id: "ruta-24-stop-03",
-        title: "Cl. 116 #58-20",
-        address: "Cl. 116 #58-20, Bogota, Colombia",
-        coords: { lat: 4.7019522, lng: -74.0820616 },
-      },
-      {
-        id: "ruta-24-stop-04",
-        title: "Cl. 109 #54-15",
-        address: "Cl. 109 #54-15, Bogota, Colombia",
-        coords: { lat: 4.6960113, lng: -74.0531414 },
-      },
-    ],
-  },
-  {
-    id: "ruta-12",
-    name: "Ruta 12 - Usaquen",
-    driver: "Mateo Herrera",
-    monitor: "Luisa Vargas",
-    stops: [
-      {
-        id: "ruta-12-stop-01",
-        title: "Cl. 134 #19-40",
-        address: "Cl. 134 #19-40, Bogota, Colombia",
-        coords: { lat: 4.7263796, lng: -74.0725173 },
-      },
-      {
-        id: "ruta-12-stop-02",
-        title: "Cra. 15 #112-30",
-        address: "Cra. 15 #112-30, Bogota, Colombia",
-        coords: { lat: 4.7434325, lng: -74.0367267 },
-      },
-      {
-        id: "ruta-12-stop-03",
-        title: "Cl. 100 #7-19",
-        address: "Cl. 100 #7-19, Bogota, Colombia",
-        coords: { lat: 4.6698769, lng: -74.0200815 },
-      },
-    ],
-  },
-  {
-    id: "ruta-03",
-    name: "Ruta 03 - Chapinero",
-    driver: "Paula Torres",
-    monitor: "Camila Perez",
-    stops: [
-      {
-        id: "ruta-03-stop-01",
-        title: "Av. Caracas #63-08",
-        address: "Av. Caracas #63-08, Bogota, Colombia",
-        coords: { lat: 4.6644905, lng: -74.0608697 },
-      },
-      {
-        id: "ruta-03-stop-02",
-        title: "Cl. 57 #11-10",
-        address: "Cl. 57 #11-10, Bogota, Colombia",
-        coords: { lat: 4.6438865, lng: -74.0640063 },
-      },
-      {
-        id: "ruta-03-stop-03",
-        title: "Cl. 45 #13-20",
-        address: "Cl. 45 #13-20, Bogota, Colombia",
-        coords: { lat: 4.6481856, lng: -74.0911662 },
+        id: "ruta-1-stop-02",
+        title: "Cra. 48 #98-51",
+        address: "Cra. 48 #98-51, Bogota, Colombia",
+        coords: { lat: 4.6886, lng: -74.0615 },
       },
     ],
   },
@@ -168,121 +72,79 @@ const ROUTES = [
 
 const MONITOR_USERS = [
   {
-    email: "andrea.rios@schoolways.app",
+    email: "chavita@schoolways.app",
     password: DEFAULT_PASSWORD,
-    displayName: "Andrea Rios",
+    displayName: "Isabel Cristina Niño",
     profile: {
       role: "monitor",
       accountType: "monitor",
       institutionCode: INSTITUTION.code,
       institutionName: INSTITUTION.name,
       institutionAddress: INSTITUTION.address,
-      route: "Ruta 24",
-    },
-  },
-  {
-    email: "luisa.vargas@schoolways.app",
-    password: DEFAULT_PASSWORD,
-    displayName: "Luisa Vargas",
-    profile: {
-      role: "monitor",
-      accountType: "monitor",
-      institutionCode: INSTITUTION.code,
-      institutionName: INSTITUTION.name,
-      institutionAddress: INSTITUTION.address,
-      route: "Ruta 12",
-    },
-  },
-  {
-    email: "camila.perez@schoolways.app",
-    password: DEFAULT_PASSWORD,
-    displayName: "Camila Perez",
-    profile: {
-      role: "monitor",
-      accountType: "monitor",
-      institutionCode: INSTITUTION.code,
-      institutionName: INSTITUTION.name,
-      institutionAddress: INSTITUTION.address,
-      route: "Ruta 03",
+      institutionLat: INSTITUTION.lat,
+      institutionLng: INSTITUTION.lng,
+      route: "Ruta 1",
     },
   },
 ];
 
 const STUDENT_CODES = [
   {
-    code: "SW24-SOFIA",
-    studentName: "Sofia Hernandez",
+    code: "SW01-SANTIAGO",
+    studentName: "Santiago Hernandez",
     institutionCode: INSTITUTION.code,
     institutionName: INSTITUTION.name,
     institutionAddress: INSTITUTION.address,
     institutionLat: INSTITUTION.lat,
     institutionLng: INSTITUTION.lng,
-    route: "Ruta 24",
-    stopAddress: "Av. Suba #128-80, Bogota, Colombia",
+    route: "Ruta 1",
+    stopAddress: "Ac 100 #47a, Bogota, Colombia",
   },
   {
-    code: "SW24-TOMAS",
-    studentName: "Tomas Rueda",
+    code: "SW01-ALEJANDRO",
+    studentName: "Alejandro Hernandez",
     institutionCode: INSTITUTION.code,
     institutionName: INSTITUTION.name,
     institutionAddress: INSTITUTION.address,
     institutionLat: INSTITUTION.lat,
     institutionLng: INSTITUTION.lng,
-    route: "Ruta 24",
-    stopAddress: "Cra. 72 #127-15, Bogota, Colombia",
-  },
-  {
-    code: "SW24-VALE",
-    studentName: "Valentina Cruz",
-    institutionCode: INSTITUTION.code,
-    institutionName: INSTITUTION.name,
-    institutionAddress: INSTITUTION.address,
-    institutionLat: INSTITUTION.lat,
-    institutionLng: INSTITUTION.lng,
-    route: "Ruta 24",
-    stopAddress: "Cl. 116 #58-20, Bogota, Colombia",
-  },
-  {
-    code: "SW24-NICO",
-    studentName: "Nicolas Melo",
-    institutionCode: INSTITUTION.code,
-    institutionName: INSTITUTION.name,
-    institutionAddress: INSTITUTION.address,
-    institutionLat: INSTITUTION.lat,
-    institutionLng: INSTITUTION.lng,
-    route: "Ruta 24",
-    stopAddress: "Cl. 109 #54-15, Bogota, Colombia",
+    route: "Ruta 1",
+    stopAddress: "Cra. 48 #98-51, Bogota, Colombia",
   },
 ];
 
 const STUDENT_USERS = [
   {
-    email: "maria@email.com",
+    email: "santiagohernandez@schoolways.app",
     password: DEFAULT_PASSWORD,
-    displayName: "Maria Hernandez",
-    code: "SW24-SOFIA",
+    displayName: "Santiago Hernández",
+    code: "SW01-SANTIAGO",
   },
   {
-    email: "laura.rueda@schoolways.app",
+    email: "alejandrohernandez@schoolways.app",
     password: DEFAULT_PASSWORD,
-    displayName: "Laura Rueda",
-    code: "SW24-TOMAS",
-  },
-  {
-    email: "jorge.cruz@schoolways.app",
-    password: DEFAULT_PASSWORD,
-    displayName: "Jorge Cruz",
-    code: "SW24-VALE",
-  },
-  {
-    email: "paula.melo@schoolways.app",
-    password: DEFAULT_PASSWORD,
-    displayName: "Paula Melo",
-    code: "SW24-NICO",
+    displayName: "Alejandro Hernández",
+    code: "SW01-ALEJANDRO",
   },
 ];
 
 const studentCodeByCode = Object.fromEntries(STUDENT_CODES.map((item) => [item.code, item]));
+const DESIRED_ACCOUNT_EMAILS = new Set(
+  [...MONITOR_USERS, ...STUDENT_USERS].map((item) => item.email)
+);
+const OLD_SEED_ACCOUNT_EMAILS = [
+  "andrea.rios@schoolways.app",
+  "luisa.vargas@schoolways.app",
+  "camila.perez@schoolways.app",
+  "maria@email.com",
+  "laura.rueda@schoolways.app",
+  "jorge.cruz@schoolways.app",
+  "paula.melo@schoolways.app",
+];
+const OLD_STUDENT_CODES = ["SW24-SOFIA", "SW24-TOMAS", "SW24-VALE", "SW24-NICO"];
+const OLD_ROUTE_IDS = ["ruta-24", "ruta-12", "ruta-03"];
+const DESIRED_STUDENT_CODES = new Set(STUDENT_CODES.map((item) => item.code));
+const DESIRED_ROUTE_IDS = new Set(ROUTES.map((item) => item.id));
 
 const ensureAuthUser = async ({ email, password, displayName }) => {
   try {
@@ -325,6 +187,8 @@ const routeDocument = (route) => ({
     address: stop.address,
     coords: stop.coords,
   })),
+  schoolAddress: INSTITUTION.address,
+  schoolCoords: { lat: INSTITUTION.lat, lng: INSTITUTION.lng },
   updatedAt: FieldValue.serverTimestamp(),
 });
 
@@ -339,7 +203,115 @@ const setMirroredRouteDocs = async (route) => {
     db.collection("colegios").doc(INSTITUTION.code).collection("rutas").doc(route.id),
   ];
 
-  await Promise.all(docTargets.map((ref) => ref.set(payload, { merge: true })));
+  await Promise.all(docTargets.map((ref) => ref.set(payload)));
+};
+
+const deleteMirroredRouteDocs = async (routeId) => {
+  const docTargets = [
+    db.collection("routes").doc(routeId),
+    db.collection("rutas").doc(routeId),
+    db.collection("institutions").doc(INSTITUTION.code).collection("routes").doc(routeId),
+    db.collection("institutions").doc(INSTITUTION.code).collection("rutas").doc(routeId),
+    db.collection("colegios").doc(INSTITUTION.code).collection("routes").doc(routeId),
+    db.collection("colegios").doc(INSTITUTION.code).collection("rutas").doc(routeId),
+  ];
+
+  await Promise.all(docTargets.map((ref) => ref.delete()));
+};
+
+const deleteUnexpectedAuthUsers = async () => {
+  let pageToken;
+  do {
+    const result = await auth.listUsers(1000, pageToken);
+    await Promise.all(
+      result.users.map((user) => {
+        if (DESIRED_ACCOUNT_EMAILS.has(user.email)) return null;
+        return auth.deleteUser(user.uid);
+      })
+    );
+    pageToken = result.pageToken;
+  } while (pageToken);
+};
+
+const deleteUnexpectedDocsByEmail = async (collectionPath) => {
+  const snapshot = await db.collection(collectionPath).get();
+  await Promise.all(
+    snapshot.docs.map((item) => {
+      const email = item.data()?.email;
+      if (DESIRED_ACCOUNT_EMAILS.has(email)) return null;
+      return item.ref.delete();
+    })
+  );
+};
+
+const deleteUnexpectedDocsById = async (collectionRef, desiredIds) => {
+  const snapshot = await collectionRef.get();
+  await Promise.all(
+    snapshot.docs.map((item) => {
+      if (desiredIds.has(item.id)) return null;
+      return item.ref.delete();
+    })
+  );
+};
+
+const cleanupRouteCollections = async () => {
+  const routeCollectionRefs = [
+    db.collection("routes"),
+    db.collection("rutas"),
+    db.collection("institutions").doc(INSTITUTION.code).collection("routes"),
+    db.collection("institutions").doc(INSTITUTION.code).collection("rutas"),
+    db.collection("colegios").doc(INSTITUTION.code).collection("routes"),
+    db.collection("colegios").doc(INSTITUTION.code).collection("rutas"),
+  ];
+
+  await Promise.all(
+    routeCollectionRefs.map((collectionRef) =>
+      deleteUnexpectedDocsById(collectionRef, DESIRED_ROUTE_IDS)
+    )
+  );
+};
+
+const cleanupOldSeedData = async () => {
+  await deleteUnexpectedAuthUsers();
+  await deleteUnexpectedDocsByEmail("users");
+
+  for (const email of OLD_SEED_ACCOUNT_EMAILS) {
+    if (DESIRED_ACCOUNT_EMAILS.has(email)) continue;
+    try {
+      const user = await auth.getUserByEmail(email);
+      await Promise.all([
+        auth.deleteUser(user.uid),
+        db.collection("users").doc(user.uid).delete(),
+      ]);
+    } catch (error) {
+      if (error?.code !== "auth/user-not-found") {
+        throw error;
+      }
+    }
+  }
+
+  await Promise.all([
+    deleteUnexpectedDocsById(db.collection("studentCodes"), DESIRED_STUDENT_CODES),
+    deleteUnexpectedDocsById(db.collection("studentAccounts"), DESIRED_STUDENT_CODES),
+    deleteUnexpectedDocsById(
+      db.collection("institutions").doc(INSTITUTION.code).collection("students"),
+      DESIRED_STUDENT_CODES
+    ),
+    cleanupRouteCollections(),
+    ...OLD_STUDENT_CODES.map((code) =>
+      Promise.all([
+        db.collection("studentCodes").doc(code).delete(),
+        db.collection("studentAccounts").doc(code).delete(),
+        db
+          .collection("institutions")
+          .doc(INSTITUTION.code)
+          .collection("students")
+          .doc(code)
+          .delete(),
+      ])
+    ),
+    ...OLD_ROUTE_IDS.map((routeId) => deleteMirroredRouteDocs(routeId)),
+  ]);
 };
 
 const seedInstitution = async () => {
@@ -463,6 +435,7 @@ const seedStudentUsers = async () => {
 };
 
 const main = async () => {
+  await cleanupOldSeedData();
   await seedInstitution();
   await Promise.all(ROUTES.map((route) => setMirroredRouteDocs(route)));
   await seedStudentCodes();

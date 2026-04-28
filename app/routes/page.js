@@ -1,32 +1,11 @@
 const routes = [
   {
-    id: "R-24",
-    name: "Ruta 24 - Suba Norte",
+    id: "R-1",
+    name: "Ruta 1",
     status: "En camino",
     driver: "Carlos Gomez",
-    monitor: "Andrea Rios",
-    stops: [
-      "Av. Suba #128-80",
-      "Cra. 72 #127-15",
-      "Cl. 116 #58-20",
-      "Cl. 109 #54-15",
-    ],
-  },
-  {
-    id: "R-12",
-    name: "Ruta 12 - Usaquen",
-    status: "Programada",
-    driver: "Mateo Herrera",
-    monitor: "Luisa Vargas",
-    stops: ["Cl. 134 #19-40", "Cra. 15 #112-30", "Cl. 100 #7-19"],
-  },
-  {
-    id: "R-03",
-    name: "Ruta 03 - Chapinero",
-    status: "Finalizada",
-    driver: "Paula Torres",
-    monitor: "Camila Perez",
-    stops: ["Av. Caracas #63-08", "Cl. 57 #11-10", "Cl. 45 #13-20"],
+    monitor: "Isabel Cristina Niño",
+    stops: ["Calle 96 #45a 40", "Cra. 48 #98-51"],
   },
 ];
 
