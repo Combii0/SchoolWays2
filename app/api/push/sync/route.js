@@ -111,6 +111,19 @@ const parseInteger = (value) => {
   return null;
 };
 
+const parseNumber = (value) => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const parsed = Number.parseFloat(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return null;
+};
+
 const extractPushTokens = (profile) => {
   const tokens = [];
   const direct = profile?.pushNotifications?.web?.token;
@@ -313,6 +326,7 @@ const buildStops = (rawStops) => {
         title: toText(item.title) || `Paradero ${index + 1}`,
         order: orderValue !== null ? orderValue : index,
         minutes: parseInteger(item.minutes),
+        distanceMeters: parseNumber(item.distanceMeters),
         status: toLowerText(item.status),
         excluded: Boolean(item.excluded),
       };
@@ -393,11 +407,14 @@ const resolveStudentStop = (student, stops) => {
 
 const buildRemainingStopsMessage = (name, remainingStops) => {
   const unit = remainingStops === 1 ? "parada" : "paradas";
-  return `${name}, estamos a ${remainingStops} ${unit} de llegar por ti! :)`;
+  return `Estamos a ${remainingStops} ${unit} de recoger a ${name}`;
 };
 
-const buildEtaMessage = (name, minutes) => {
-  return `${name}, faltan aproximadamente ${minutes} minutos para llegar por ti! ;)`;
+const buildDistanceMessage = (name, distanceMeters) => {
+  if (distanceMeters === 1000) {
+    return `Estamos a 1km de llegar por ${name}!`;
+  }
+  return `Estamos a ${distanceMeters}m de llegar por ${name}!`;
 };
 
 const buildPickedUpMessage = (name) => {
@@ -630,17 +647,17 @@ export async function POST(request) {
     let statePatch = null;
 
     if (eventType === EVENT_TYPES.ETA_UPDATE && !isMissed && !isBoarded) {
-      const minutes = parseInteger(studentStop.minutes);
-      if (minutes !== null && minutes <= 5 && !state.eta5Sent) {
-        message = buildEtaMessage(name, 5);
+      const distanceMeters = parseNumber(studentStop.distanceMeters);
+      if (distanceMeters !== null && distanceMeters <= 500 && !state.distance500Sent) {
+        message = buildDistanceMessage(name, 500);
         statePatch = {
-          eta15Sent: true,
-          eta5Sent: true,
+          distance1000Sent: true,
+          distance500Sent: true,
         };
-      } else if (minutes !== null && minutes <= 15 && !state.eta15Sent) {
-        message = buildEtaMessage(name, 15);
+      } else if (distanceMeters !== null && distanceMeters <= 1000 && !state.distance1000Sent) {
+        message = buildDistanceMessage(name, 1000);
         statePatch = {
-          eta15Sent: true,
+          distance1000Sent: true,
         };
       }
     }

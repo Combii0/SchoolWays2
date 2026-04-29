@@ -419,6 +419,7 @@ export default function RecorridoPage() {
       address: item.address || null,
       order: typeof item.order === "number" ? item.order : item.sourceIndex ?? index,
       minutes: typeof item.minutes === "number" ? item.minutes : null,
+      distanceMeters: typeof item.distanceMeters === "number" ? item.distanceMeters : null,
       status: item.status || null,
       excluded: Boolean(item.excluded),
     }));
@@ -427,7 +428,10 @@ export default function RecorridoPage() {
       ? `${busCoords.lat.toFixed(4)},${busCoords.lng.toFixed(4)}`
       : "no-bus";
     const signature = `${eventType}:${routeId}:${roundedBus}:${stops
-      .map((item) => `${item.key}:${item.minutes ?? "na"}:${item.status ?? "none"}`)
+      .map(
+        (item) =>
+          `${item.key}:${item.minutes ?? "na"}:${item.distanceMeters ?? "na"}:${item.status ?? "none"}`
+      )
       .join("|")}:${changedStop?.key || "none"}:${changedStop?.status || "none"}`;
     const now = Date.now();
     const minWindowMs = eventType === "eta_update" ? 25000 : 0;
@@ -1242,6 +1246,10 @@ export default function RecorridoPage() {
 
           metricsByKey[stop.key] = {
             order: index,
+            distanceMeters:
+              typeof distanceMeters === "number" && Number.isFinite(distanceMeters)
+                ? Math.round(distanceMeters)
+                : null,
             distanceKm:
               typeof distanceMeters === "number" ? (distanceMeters / 1000).toFixed(1) : null,
             minutes:
@@ -1264,6 +1272,7 @@ export default function RecorridoPage() {
             address: stop.address,
             sourceIndex: stop.sourceIndex,
             minutes: metrics?.minutes ?? null,
+            distanceMeters: metrics?.distanceMeters ?? null,
             distanceKm: metrics?.distanceKm ?? null,
             order: metrics ? metrics.order : 1000 + stop.sourceIndex,
             status: statusValue,
