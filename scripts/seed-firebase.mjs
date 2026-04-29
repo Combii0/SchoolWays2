@@ -56,9 +56,9 @@ const ROUTES = [
     stops: [
       {
         id: "ruta-1-stop-01",
-        title: "Calle 96 #45a 40",
-        address: "Ac 100 #47a, Bogota, Colombia",
-        coords: { lat: 4.6851812, lng: -74.058837 },
+        title: "Cra. 49 #98A-11",
+        address: "Cra. 49 #98A-11, Bogota, Colombia",
+        coords: { lat: 4.6849411, lng: -74.0612392 },
       },
       {
         id: "ruta-1-stop-02",
@@ -98,7 +98,7 @@ const STUDENT_CODES = [
     institutionLat: INSTITUTION.lat,
     institutionLng: INSTITUTION.lng,
     route: "Ruta 1",
-    stopAddress: "Ac 100 #47a, Bogota, Colombia",
+    stopAddress: "Cra. 49 #98A-11, Bogota, Colombia",
   },
   {
     code: "SW01-ALEJANDRO",

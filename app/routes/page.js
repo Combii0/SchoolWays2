@@ -5,7 +5,7 @@ const routes = [
     status: "En camino",
     driver: "Carlos Gomez",
     monitor: "Isabel Cristina Niño",
-    stops: ["Calle 96 #45a 40", "Cra. 48 #98-51"],
+    stops: ["Cra. 49 #98A-11", "Cra. 48 #98-51"],
   },
 ];
 
